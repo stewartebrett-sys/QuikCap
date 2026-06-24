@@ -6,9 +6,7 @@ function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const focusEditor = () => {
-    setTimeout(() => {
-      editorRef.current?.focus();
-    }, 50);
+    editorRef.current?.focus();
   };
 
   useEffect(() => {

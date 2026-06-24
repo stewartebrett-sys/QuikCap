@@ -11,6 +11,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Ok(ns_window_ptr) = window.ns_window() {
+                        unsafe {
+                            let ns_window = &*ns_window_ptr.cast::<objc2_app_kit::NSWindow>();
+                            ns_window.setAnimationBehavior(
+                                objc2_app_kit::NSWindowAnimationBehavior::None,
+                            );
+                        }
+                        println!("[QuikCap] NSWindow animation behavior set to None");
+                    }
+                }
+            }
+
             #[cfg(desktop)]
             {
                 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -20,8 +35,10 @@ pub fn run() {
                     |app_handle, _shortcut, event| {
                         if event.state == ShortcutState::Pressed {
                             if let Some(window) = app_handle.get_webview_window("main") {
+                                if window.is_minimized().unwrap_or(false) {
+                                    let _ = window.unminimize();
+                                }
                                 let _ = window.show();
-                                let _ = window.unminimize();
                                 let _ = window.set_focus();
                                 let _ = window.emit("focus-editor", ());
                                 println!("[QuikCap] Shortcut fired — window activated");
@@ -35,6 +52,7 @@ pub fn run() {
                     Err(e) => eprintln!("[QuikCap] Failed to register shortcut: {e}"),
                 }
             }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![greet])
