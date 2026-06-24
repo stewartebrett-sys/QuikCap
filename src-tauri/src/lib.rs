@@ -1,4 +1,83 @@
+use std::{
+    fs,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Note {
+    id: String,
+    text: String,
+    created_at: u64, // Unix milliseconds
+}
+
+fn data_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
+    app.path()
+        .app_data_dir()
+        .expect("could not resolve app data dir")
+}
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+#[tauri::command]
+fn load_draft(app: tauri::AppHandle) -> String {
+    let text = fs::read_to_string(data_dir(&app).join("draft.txt")).unwrap_or_default();
+    println!("[QuikCap] Draft loaded ({} chars)", text.len());
+    text
+}
+
+#[tauri::command]
+fn save_draft(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    let dir = data_dir(&app);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::write(dir.join("draft.txt"), &text).map_err(|e| e.to_string())?;
+    println!("[QuikCap] Draft saved ({} chars)", text.len());
+    Ok(())
+}
+
+#[tauri::command]
+fn finish_note(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Ok(());
+    }
+
+    let dir = data_dir(&app);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let millis = now_millis();
+    let note = Note {
+        id: millis.to_string(),
+        text,
+        created_at: millis,
+    };
+
+    let notes_path = dir.join("notes.json");
+    let mut notes: Vec<Note> = if notes_path.exists() {
+        let raw = fs::read_to_string(&notes_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&raw).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    notes.push(note.clone());
+
+    let json = serde_json::to_string(&notes).map_err(|e| e.to_string())?;
+    fs::write(&notes_path, json).map_err(|e| e.to_string())?;
+
+    // Clear draft after note is safely written
+    fs::write(dir.join("draft.txt"), "").map_err(|e| e.to_string())?;
+
+    println!("[QuikCap] Note finished (id: {}, total: {})", note.id, notes.len());
+    Ok(())
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -44,7 +123,7 @@ pub fn run() {
 
                                 if is_visible && is_focused {
                                     let _ = window.hide();
-                                    println!("[QuikCap] Shortcut fired — window hidden (was focused)");
+                                    println!("[QuikCap] Shortcut fired — window hidden");
                                 } else {
                                     if window.is_minimized().unwrap_or(false) {
                                         let _ = window.unminimize();
@@ -52,7 +131,7 @@ pub fn run() {
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                     let _ = window.emit("focus-editor", ());
-                                    println!("[QuikCap] Shortcut fired — window shown and focused (reusing existing window)");
+                                    println!("[QuikCap] Shortcut fired — window shown (reusing existing window)");
                                 }
                             }
                         }
@@ -67,7 +146,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet, load_draft, save_draft, finish_note])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

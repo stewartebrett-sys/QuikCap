@@ -2,34 +2,71 @@ import "./App.css";
 import { useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+
+const DRAFT_DEBOUNCE_MS = 300;
 
 function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const focusEditor = () => {
     editorRef.current?.focus();
   };
 
   useEffect(() => {
-    focusEditor();
-
-    const unlistenPromise = listen("focus-editor", () => {
-      focusEditor();
+    // Restore draft from disk. The window is hidden at startup so this
+    // resolves before the user ever sees the editor.
+    invoke<string>("load_draft").then((draft) => {
+      if (editorRef.current && draft) {
+        editorRef.current.value = draft;
+      }
     });
 
-    const handleKeyDown = (e: KeyboardEvent) => {
+    focusEditor();
+
+    const unlistenPromise = listen("focus-editor", focusEditor);
+
+    const handleDocumentKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         getCurrentWindow().hide();
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleDocumentKeyDown);
 
     return () => {
+      clearTimeout(draftTimer.current);
       unlistenPromise.then((unlisten) => unlisten());
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleDocumentKeyDown);
     };
   }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => {
+      invoke("save_draft", { text }).catch(console.error);
+    }, DRAFT_DEBOUNCE_MS);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && e.ctrlKey) {
+      e.preventDefault();
+
+      const text = editorRef.current?.value ?? "";
+      if (!text.trim()) return;
+
+      // Clear the editor immediately — never wait for the save.
+      if (editorRef.current) editorRef.current.value = "";
+
+      // Cancel any pending draft save so it doesn't overwrite the cleared state.
+      clearTimeout(draftTimer.current);
+
+      // Save the completed note in the background. Also clears draft.txt.
+      invoke("finish_note", { text }).catch(console.error);
+    }
+  };
 
   return (
     <div className="app">
@@ -38,6 +75,8 @@ function App() {
         className="editor"
         spellCheck={false}
         placeholder=""
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
       />
     </div>
   );
