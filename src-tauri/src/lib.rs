@@ -11,18 +11,22 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
+            let window = app
+                .get_webview_window("main")
+                .expect("main window must exist");
+
+            println!("[QuikCap] Window 'main' created at startup (id: {})", window.label());
+
             #[cfg(target_os = "macos")]
             {
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Ok(ns_window_ptr) = window.ns_window() {
-                        unsafe {
-                            let ns_window = &*ns_window_ptr.cast::<objc2_app_kit::NSWindow>();
-                            ns_window.setAnimationBehavior(
-                                objc2_app_kit::NSWindowAnimationBehavior::None,
-                            );
-                        }
-                        println!("[QuikCap] NSWindow animation behavior set to None");
+                if let Ok(ns_window_ptr) = window.ns_window() {
+                    unsafe {
+                        let ns_window = &*ns_window_ptr.cast::<objc2_app_kit::NSWindow>();
+                        ns_window.setAnimationBehavior(
+                            objc2_app_kit::NSWindowAnimationBehavior::None,
+                        );
                     }
+                    println!("[QuikCap] NSWindow animation behavior set to None");
                 }
             }
 
@@ -35,13 +39,21 @@ pub fn run() {
                     |app_handle, _shortcut, event| {
                         if event.state == ShortcutState::Pressed {
                             if let Some(window) = app_handle.get_webview_window("main") {
-                                if window.is_minimized().unwrap_or(false) {
-                                    let _ = window.unminimize();
+                                let is_visible = window.is_visible().unwrap_or(false);
+                                let is_focused = window.is_focused().unwrap_or(false);
+
+                                if is_visible && is_focused {
+                                    let _ = window.hide();
+                                    println!("[QuikCap] Shortcut fired — window hidden (was focused)");
+                                } else {
+                                    if window.is_minimized().unwrap_or(false) {
+                                        let _ = window.unminimize();
+                                    }
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                    let _ = window.emit("focus-editor", ());
+                                    println!("[QuikCap] Shortcut fired — window shown and focused (reusing existing window)");
                                 }
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                let _ = window.emit("focus-editor", ());
-                                println!("[QuikCap] Shortcut fired — window activated");
                             }
                         }
                     },

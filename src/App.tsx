@@ -1,5 +1,6 @@
 import "./App.css";
 import { useEffect, useRef } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 
 function App() {
@@ -16,8 +17,17 @@ function App() {
       focusEditor();
     });
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        getCurrentWindow().hide();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 
