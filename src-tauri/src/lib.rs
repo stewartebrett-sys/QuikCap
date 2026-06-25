@@ -205,6 +205,26 @@ pub fn run() {
             update_note,
             hide_capture
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| match event {
+            // Prevent the app from quitting — only a future tray "Quit" action
+            // should terminate the process.
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                api.prevent_exit();
+            }
+            // macOS dock icon clicked while all windows are hidden → bring
+            // the database window back to the front.
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { has_visible_windows, .. } => {
+                if !has_visible_windows {
+                    if let Some(db) = app_handle.get_webview_window("database") {
+                        let _ = db.show();
+                        let _ = db.set_focus();
+                        println!("[QuikCap] App reopened — showing database window");
+                    }
+                }
+            }
+            _ => {}
+        });
 }
