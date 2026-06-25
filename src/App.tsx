@@ -65,6 +65,9 @@ function App() {
 
       // Save the completed note in the background. Also clears draft.txt.
       invoke("finish_note", { text }).catch(console.error);
+
+      // Hide immediately — same instant behavior as Escape.
+      getCurrentWindow().hide();
     }
   };
 
