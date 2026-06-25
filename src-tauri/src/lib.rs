@@ -96,6 +96,18 @@ pub fn run() {
 
             println!("[QuikCap] Window 'main' created at startup (id: {})", window.label());
 
+            // Intercept the X button so it hides rather than quits.
+            window.on_window_event({
+                let window = window.clone();
+                move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        println!("[QuikCap] Close requested — hiding window instead of quitting");
+                    }
+                }
+            });
+
             #[cfg(target_os = "macos")]
             {
                 if let Ok(ns_window_ptr) = window.ns_window() {
