@@ -1,6 +1,5 @@
 import "./Capture.css";
 import { useEffect, useRef } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -27,7 +26,7 @@ function Capture() {
 
     const handleDocumentKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        getCurrentWindow().hide();
+        invoke("hide_capture").catch(console.error);
       }
     };
 
@@ -62,7 +61,7 @@ function Capture() {
       invoke("finish_note", { text }).catch(console.error);
 
       // Hide immediately — same instant behavior as Escape.
-      getCurrentWindow().hide();
+      invoke("hide_capture").catch(console.error);
     }
   };
 

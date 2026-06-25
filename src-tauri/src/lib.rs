@@ -99,6 +99,14 @@ fn list_notes(app: tauri::AppHandle) -> Vec<Note> {
 }
 
 #[tauri::command]
+fn hide_capture(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("capture") {
+        let _ = window.hide();
+        println!("[QuikCap] Capture window hidden via command");
+    }
+}
+
+#[tauri::command]
 fn update_note(app: tauri::AppHandle, id: String, text: String) -> Result<(), String> {
     let notes_path = data_dir(&app).join("notes.json");
     let raw = fs::read_to_string(&notes_path).map_err(|e| e.to_string())?;
@@ -194,7 +202,8 @@ pub fn run() {
             save_draft,
             finish_note,
             list_notes,
-            update_note
+            update_note,
+            hide_capture
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
