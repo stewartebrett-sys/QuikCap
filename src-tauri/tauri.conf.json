@@ -12,12 +12,22 @@
   "app": {
     "windows": [
       {
+        "label": "capture",
         "title": "QuikCap",
         "width": 850,
         "height": 550,
         "resizable": true,
         "center": true,
         "visible": false
+      },
+      {
+        "label": "database",
+        "title": "QuikCap",
+        "width": 1200,
+        "height": 750,
+        "resizable": true,
+        "center": true,
+        "visible": true
       }
     ],
     "security": {

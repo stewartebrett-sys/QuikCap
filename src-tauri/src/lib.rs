@@ -10,7 +10,9 @@ use tauri::{Emitter, Manager};
 struct Note {
     id: String,
     text: String,
-    created_at: u64, // Unix milliseconds
+    created_at: u64,
+    #[serde(default)]
+    updated_at: u64,
 }
 
 fn data_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
@@ -57,6 +59,7 @@ fn finish_note(app: tauri::AppHandle, text: String) -> Result<(), String> {
         id: millis.to_string(),
         text,
         created_at: millis,
+        updated_at: millis,
     };
 
     let notes_path = dir.join("notes.json");
@@ -72,7 +75,6 @@ fn finish_note(app: tauri::AppHandle, text: String) -> Result<(), String> {
     let json = serde_json::to_string(&notes).map_err(|e| e.to_string())?;
     fs::write(&notes_path, json).map_err(|e| e.to_string())?;
 
-    // Clear draft after note is safely written
     fs::write(dir.join("draft.txt"), "").map_err(|e| e.to_string())?;
 
     println!("[QuikCap] Note finished (id: {}, total: {})", note.id, notes.len());
@@ -80,8 +82,34 @@ fn finish_note(app: tauri::AppHandle, text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+fn list_notes(app: tauri::AppHandle) -> Vec<Note> {
+    let notes_path = data_dir(&app).join("notes.json");
+    if !notes_path.exists() {
+        return Vec::new();
+    }
+    let raw = fs::read_to_string(&notes_path).unwrap_or_default();
+    let mut notes: Vec<Note> = serde_json::from_str(&raw).unwrap_or_default();
+    for note in &mut notes {
+        if note.updated_at == 0 {
+            note.updated_at = note.created_at;
+        }
+    }
+    notes.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    notes
+}
+
+#[tauri::command]
+fn update_note(app: tauri::AppHandle, id: String, text: String) -> Result<(), String> {
+    let notes_path = data_dir(&app).join("notes.json");
+    let raw = fs::read_to_string(&notes_path).map_err(|e| e.to_string())?;
+    let mut notes: Vec<Note> = serde_json::from_str(&raw).unwrap_or_default();
+    if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
+        note.text = text;
+        note.updated_at = now_millis();
+    }
+    let json = serde_json::to_string(&notes).map_err(|e| e.to_string())?;
+    fs::write(&notes_path, json).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -90,27 +118,18 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            let window = app
-                .get_webview_window("main")
-                .expect("main window must exist");
+            let capture = app
+                .get_webview_window("capture")
+                .expect("capture window must exist");
+            let database = app
+                .get_webview_window("database")
+                .expect("database window must exist");
 
-            println!("[QuikCap] Window 'main' created at startup (id: {})", window.label());
-
-            // Intercept the X button so it hides rather than quits.
-            window.on_window_event({
-                let window = window.clone();
-                move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = window.hide();
-                        println!("[QuikCap] Close requested — hiding window instead of quitting");
-                    }
-                }
-            });
+            println!("[QuikCap] Windows created");
 
             #[cfg(target_os = "macos")]
             {
-                if let Ok(ns_window_ptr) = window.ns_window() {
+                if let Ok(ns_window_ptr) = capture.ns_window() {
                     unsafe {
                         let ns_window = &*ns_window_ptr.cast::<objc2_app_kit::NSWindow>();
                         ns_window.setAnimationBehavior(
@@ -121,6 +140,18 @@ pub fn run() {
                 }
             }
 
+            // X button hides both windows instead of quitting
+            for window in [capture.clone(), database] {
+                let w = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = w.hide();
+                        println!("[QuikCap] Close requested — hiding window instead of quitting");
+                    }
+                });
+            }
+
             #[cfg(desktop)]
             {
                 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -129,13 +160,13 @@ pub fn run() {
                     "Ctrl+Shift+Space",
                     |app_handle, _shortcut, event| {
                         if event.state == ShortcutState::Pressed {
-                            if let Some(window) = app_handle.get_webview_window("main") {
+                            if let Some(window) = app_handle.get_webview_window("capture") {
                                 let is_visible = window.is_visible().unwrap_or(false);
                                 let is_focused = window.is_focused().unwrap_or(false);
 
                                 if is_visible && is_focused {
                                     let _ = window.hide();
-                                    println!("[QuikCap] Shortcut fired — window hidden");
+                                    println!("[QuikCap] Shortcut fired — capture hidden");
                                 } else {
                                     if window.is_minimized().unwrap_or(false) {
                                         let _ = window.unminimize();
@@ -143,7 +174,7 @@ pub fn run() {
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                     let _ = window.emit("focus-editor", ());
-                                    println!("[QuikCap] Shortcut fired — window shown (reusing existing window)");
+                                    println!("[QuikCap] Shortcut fired — capture shown");
                                 }
                             }
                         }
@@ -158,7 +189,13 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, load_draft, save_draft, finish_note])
+        .invoke_handler(tauri::generate_handler![
+            load_draft,
+            save_draft,
+            finish_note,
+            list_notes,
+            update_note
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
