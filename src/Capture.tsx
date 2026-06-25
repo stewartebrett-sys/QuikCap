@@ -9,10 +9,6 @@ function Capture() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const focusEditor = () => {
-    editorRef.current?.focus();
-  };
-
   useEffect(() => {
     invoke<string>("load_draft").then((draft) => {
       if (editorRef.current && draft) {
@@ -20,22 +16,28 @@ function Capture() {
       }
     });
 
-    focusEditor();
+    editorRef.current?.focus();
 
-    const unlistenPromise = listen("focus-editor", focusEditor);
+    const unlistenPromise = listen("focus-editor", () => {
+      editorRef.current?.focus();
+    });
 
-    const handleDocumentKeyDown = (e: KeyboardEvent) => {
+    // Capture phase on window — fires before WKWebView's native text handlers
+    // and before any React/element handler. This is the correct level for Escape.
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        console.log("[QuikCap] Escape — window capture phase");
+        e.preventDefault();
         invoke("hide_capture").catch(console.error);
       }
     };
 
-    document.addEventListener("keydown", handleDocumentKeyDown);
+    window.addEventListener("keydown", handleWindowKeyDown, true);
 
     return () => {
       clearTimeout(draftTimer.current);
       unlistenPromise.then((unlisten) => unlisten());
-      document.removeEventListener("keydown", handleDocumentKeyDown);
+      window.removeEventListener("keydown", handleWindowKeyDown, true);
     };
   }, []);
 
@@ -48,6 +50,15 @@ function Capture() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Escape") {
+      // Belt-and-suspenders: catches Escape if the capture listener above somehow
+      // doesn't fire (e.g. JS not fully initialised yet on first render).
+      console.log("[QuikCap] Escape — textarea onKeyDown");
+      e.preventDefault();
+      invoke("hide_capture").catch(console.error);
+      return;
+    }
+
     if (e.key === "Enter" && e.ctrlKey) {
       e.preventDefault();
 
@@ -59,8 +70,6 @@ function Capture() {
       clearTimeout(draftTimer.current);
 
       invoke("finish_note", { text }).catch(console.error);
-
-      // Hide immediately — same instant behavior as Escape.
       invoke("hide_capture").catch(console.error);
     }
   };
