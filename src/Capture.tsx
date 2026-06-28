@@ -29,6 +29,7 @@ import {
   Table, Link2, Image, Minus,
   Flag, Pin,
   MoreHorizontal,
+  ChevronLeft, ChevronRight, CalendarCheck,
 } from "lucide-react";
 
 // ─── Constants ───────────────────────────────────────────
@@ -53,24 +54,40 @@ const PRESET_COLORS = [
   { hex: "#db2777", label: "Pink" },
 ];
 
-function getWordCount(editor: Editor | null): number {
-  if (!editor) return 0;
-  const text = editor.getText().trim();
-  return text ? text.split(/\s+/).length : 0;
+const MONTH_NAMES = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function formatFollowUpDisplay(date: Date): string {
+  const now = new Date();
+  if (date.getFullYear() !== now.getFullYear()) {
+    return `${MONTH_SHORT[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  }
+  return `${MONTH_SHORT[date.getMonth()]} ${date.getDate()}`;
+}
+
+function toISODate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 // ─── Capture ─────────────────────────────────────────────
 
 function Capture() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
-  const [followUp, setFollowUp] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
   const [pinned, setPinned] = useState(false);
-  const [wordCount, setWordCount] = useState(0);
   const [zoom, setZoom] = useState(100);
 
   const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const editorInstanceRef = useRef<Editor | null>(null);
   const editorAreaRef = useRef<HTMLDivElement>(null);
+  // Allows handleKeyDown (closed over at useEditor init) to always call the
+  // latest finishNote closure without stale-capture issues.
+  const finishNoteRef = useRef<() => void>(() => {});
+
   const appWindow = getCurrentWindow();
 
   const editor = useEditor({
@@ -97,15 +114,9 @@ function Capture() {
       handleKeyDown(_, event) {
         const e = editorInstanceRef.current;
 
-        // Ctrl+Enter → finish note
+        // Ctrl+Enter → finish note (delegates to always-current ref)
         if (event.key === "Enter" && event.ctrlKey) {
-          if (!e) return false;
-          const html = e.getHTML();
-          if (!html.replace(/<[^>]*>/g, "").trim()) return true;
-          e.commands.clearContent(true);
-          clearTimeout(draftTimer.current);
-          invoke("finish_note", { text: html }).catch(console.error);
-          invoke("hide_capture").catch(console.error);
+          finishNoteRef.current();
           return true;
         }
 
@@ -136,27 +147,29 @@ function Capture() {
       },
     },
     onUpdate({ editor: e }) {
-      setWordCount(getWordCount(e));
+      const html = e.getHTML();
+      // Don't save an empty document — happens when clearContent fires during finish
+      if (!html.replace(/<[^>]*>/g, "").trim()) {
+        setSaveStatus("saved");
+        return;
+      }
       setSaveStatus("saving");
       clearTimeout(draftTimer.current);
       draftTimer.current = setTimeout(() => {
-        invoke("save_draft", { text: e.getHTML() }).catch(console.error);
+        invoke("save_draft", { text: html }).catch(console.error);
         setSaveStatus("saved");
       }, DRAFT_DEBOUNCE_MS);
     },
   });
 
-  // Keep ref in sync so handleKeyDown closure always sees the live editor
+  // Keep editor ref in sync so handleKeyDown closure always sees the live editor
   useEffect(() => { editorInstanceRef.current = editor; }, [editor]);
 
   // Load persisted draft
   useEffect(() => {
     if (!editor) return;
     invoke<string>("load_draft").then((draft) => {
-      if (draft) {
-        editor.commands.setContent(draft);
-        setWordCount(getWordCount(editor));
-      }
+      if (draft) editor.commands.setContent(draft);
     });
   }, [editor]);
 
@@ -193,14 +206,29 @@ function Capture() {
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  const handleFinish = () => {
-    const html = editor?.getHTML() ?? "";
-    if (!html.replace(/<[^>]*>/g, "").trim()) return;
-    editor?.commands.clearContent(true);
-    clearTimeout(draftTimer.current);
-    invoke("finish_note", { text: html }).catch(console.error);
+  // ── Unified finish-note action ────────────────────────────
+  // Called by both the Finish Note button and Ctrl+Enter.
+  // Empty note → just hide. Non-empty → save + clear + hide.
+  const finishNote = () => {
+    const e = editorInstanceRef.current;
+    const html = e?.getHTML() ?? "";
+    const isEmpty = !html.replace(/<[^>]*>/g, "").trim();
+
+    if (!isEmpty && e) {
+      e.commands.clearContent(true);
+      clearTimeout(draftTimer.current);
+      invoke("finish_note", {
+        text: html,
+        followUpDate: followUpDate ? toISODate(followUpDate) : null,
+      }).catch(console.error);
+      setFollowUpDate(null);
+    }
+
     invoke("hide_capture").catch(console.error);
   };
+
+  // Keep the ref pointing to the current closure on every render
+  finishNoteRef.current = finishNote;
 
   return (
     <div className="cap-root">
@@ -214,7 +242,7 @@ function Capture() {
         </div>
 
         <div className="cap-header-actions" data-tauri-no-drag>
-          <button className="cap-finish-btn" onClick={handleFinish}>
+          <button className="cap-finish-btn" onClick={finishNote}>
             Finish Note
           </button>
           <div className="cap-winctrl-group">
@@ -235,8 +263,8 @@ function Capture() {
       {editor && (
         <CaptureToolbar
           editor={editor}
-          followUp={followUp}
-          onFollowUp={() => setFollowUp((v) => !v)}
+          followUpDate={followUpDate}
+          onSetFollowUpDate={setFollowUpDate}
           pinned={pinned}
           onPin={() => setPinned((v) => !v)}
         />
@@ -260,11 +288,15 @@ function Capture() {
         <div className="cap-status-center">
           Press <kbd className="cap-kbd">Esc</kbd> to close
           &nbsp;·&nbsp;
-          <kbd className="cap-kbd">Ctrl+↵</kbd> to finish note
+          <kbd className="cap-kbd">Ctrl + Enter</kbd> to finish note
         </div>
         <div className="cap-status-right">
-          {zoom !== 100 && <span className="cap-status-zoom">{zoom}%</span>}
-          {wordCount} {wordCount === 1 ? "word" : "words"}
+          {followUpDate && (
+            <span className="cap-followup-date">
+              <CalendarCheck size={11} strokeWidth={2} />
+              {formatFollowUpDisplay(followUpDate)}
+            </span>
+          )}
         </div>
       </footer>
     </div>
@@ -275,17 +307,19 @@ function Capture() {
 
 interface ToolbarProps {
   editor: Editor;
-  followUp: boolean;
-  onFollowUp: () => void;
+  followUpDate: Date | null;
+  onSetFollowUpDate: (date: Date | null) => void;
   pinned: boolean;
   onPin: () => void;
 }
 
-function CaptureToolbar({ editor, followUp, onFollowUp, pinned, onPin }: ToolbarProps) {
+function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin }: ToolbarProps) {
   const [showColors, setShowColors] = useState(false);
   const [showOverflow, setShowOverflow] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const colorWrapRef = useRef<HTMLDivElement>(null);
   const overflowWrapRef = useRef<HTMLDivElement>(null);
+  const calendarWrapRef = useRef<HTMLDivElement>(null);
   const currentColor = (editor.getAttributes("textStyle") as { color?: string }).color ?? "";
 
   useEffect(() => {
@@ -294,6 +328,8 @@ function CaptureToolbar({ editor, followUp, onFollowUp, pinned, onPin }: Toolbar
         setShowColors(false);
       if (overflowWrapRef.current && !overflowWrapRef.current.contains(e.target as Node))
         setShowOverflow(false);
+      if (calendarWrapRef.current && !calendarWrapRef.current.contains(e.target as Node))
+        setShowCalendar(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -312,7 +348,7 @@ function CaptureToolbar({ editor, followUp, onFollowUp, pinned, onPin }: Toolbar
     if (url) editor.chain().focus().setImage({ src: url }).run();
   };
 
-  const ICON = 16; // consistent icon size throughout toolbar
+  const ICON = 16;
 
   return (
     <div className="cap-toolbar" role="toolbar" aria-label="Formatting options">
@@ -435,9 +471,22 @@ function CaptureToolbar({ editor, followUp, onFollowUp, pinned, onPin }: Toolbar
       <TbrSep />
 
       {/* Organization */}
-      <TBtn title="Follow up" active={followUp} onClick={onFollowUp}>
-        <Flag size={ICON} className={followUp ? "tbr-icon--flag-active" : ""} />
-      </TBtn>
+      <div className="tbr-pop-wrap" ref={calendarWrapRef}>
+        <TBtn
+          title={followUpDate ? `Follow up: ${formatFollowUpDisplay(followUpDate)}` : "Follow up"}
+          active={!!followUpDate || showCalendar}
+          onClick={() => setShowCalendar((v) => !v)}
+        >
+          <Flag size={ICON} className={followUpDate ? "tbr-icon--flag-active" : ""} />
+        </TBtn>
+        {showCalendar && (
+          <CalendarPicker
+            selected={followUpDate}
+            onSelect={onSetFollowUpDate}
+            onClose={() => setShowCalendar(false)}
+          />
+        )}
+      </div>
       <TBtn title="Pin note" active={pinned} onClick={onPin}>
         <Pin size={ICON} />
       </TBtn>
@@ -465,6 +514,114 @@ function CaptureToolbar({ editor, followUp, onFollowUp, pinned, onPin }: Toolbar
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Calendar picker ─────────────────────────────────────
+
+interface CalendarPickerProps {
+  selected: Date | null;
+  onSelect: (date: Date | null) => void;
+  onClose: () => void;
+}
+
+function CalendarPicker({ selected, onSelect, onClose }: CalendarPickerProps) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(selected?.getFullYear() ?? today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(selected?.getMonth() ?? today.getMonth());
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
+    else setViewMonth((m) => m - 1);
+  };
+
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
+    else setViewMonth((m) => m + 1);
+  };
+
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay(); // 0 = Sun
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+  const isToday = (d: number) =>
+    today.getFullYear() === viewYear && today.getMonth() === viewMonth && today.getDate() === d;
+
+  const isSelected = (d: number) =>
+    !!selected &&
+    selected.getFullYear() === viewYear &&
+    selected.getMonth() === viewMonth &&
+    selected.getDate() === d;
+
+  const DAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+  // Build cells: leading nulls for offset, then day numbers
+  const cells: (number | null)[] = [
+    ...Array(firstDayOfWeek).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+
+  return (
+    <div className="cal-pop">
+      <div className="cal-header">
+        <button
+          className="cal-nav"
+          onMouseDown={(e) => { e.preventDefault(); prevMonth(); }}
+          title="Previous month"
+        >
+          <ChevronLeft size={14} strokeWidth={2} />
+        </button>
+        <span className="cal-title">{MONTH_NAMES[viewMonth]} {viewYear}</span>
+        <button
+          className="cal-nav"
+          onMouseDown={(e) => { e.preventDefault(); nextMonth(); }}
+          title="Next month"
+        >
+          <ChevronRight size={14} strokeWidth={2} />
+        </button>
+      </div>
+
+      <div className="cal-grid">
+        {DAY_LABELS.map((d) => (
+          <div key={d} className="cal-dow">{d}</div>
+        ))}
+        {cells.map((d, i) =>
+          d === null ? (
+            <div key={`e-${i}`} className="cal-empty" />
+          ) : (
+            <button
+              key={`d-${i}`}
+              className={[
+                "cal-day",
+                isToday(d) ? "cal-day--today" : "",
+                isSelected(d) ? "cal-day--selected" : "",
+              ].filter(Boolean).join(" ")}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onSelect(new Date(viewYear, viewMonth, d));
+                onClose();
+              }}
+            >
+              {d}
+            </button>
+          )
+        )}
+      </div>
+
+      {selected && (
+        <div className="cal-footer">
+          <button
+            className="cal-clear"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onSelect(null);
+              onClose();
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   );
 }
