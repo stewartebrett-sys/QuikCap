@@ -160,18 +160,28 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 5px;
-  color: #4b5563;
+  width: 38px;
+  height: 36px;
+  border-radius: 6px;
+  color: #5b6472;
   transition: background 80ms, color 80ms;
   flex-shrink: 0;
   position: relative;
 }
 
+.tbr-btn svg {
+  flex-shrink: 0;
+  stroke-width: 1.75;
+}
+
 .tbr-btn:hover {
   background: rgba(0, 0, 0, 0.06);
   color: var(--cap-text);
+}
+
+.tbr-btn:active:not(.tbr-btn--dim) {
+  background: rgba(0, 0, 0, 0.1);
+  transform: scale(0.94);
 }
 
 .tbr-btn--active {
@@ -185,8 +195,31 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
 }
 
 .tbr-btn--dim {
-  opacity: 0.3;
+  opacity: 0.28;
   pointer-events: none;
+}
+
+/* Follow-up flag turns red when active */
+.tbr-icon--flag-active {
+  color: var(--cap-red);
+}
+
+/* ── Color icon (Palette glyph + colored underline bar) ── */
+
+.tbr-color-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 0;
+}
+
+.tbr-color-icon-bar {
+  display: block;
+  width: 14px;
+  height: 3px;
+  border-radius: 1.5px;
+  flex-shrink: 0;
 }
 
 /* ── Popover wrapper ── */
@@ -323,7 +356,8 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
   min-height: 100%;
   outline: none;
   padding: 40px 60px 32px;
-  font-size: 17px;
+  /* Ctrl+Wheel zoom: --editor-zoom is set inline by React, falls back to 1 */
+  font-size: calc(17px * var(--editor-zoom, 1));
   line-height: 1.75;
   color: var(--cap-text);
   caret-color: var(--cap-purple);
@@ -527,7 +561,16 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
   min-width: 80px;
 }
 
-.cap-status-right { justify-content: flex-end; }
+.cap-status-right { justify-content: flex-end; gap: 8px; }
+
+.cap-status-zoom {
+  font-size: 10.5px;
+  color: var(--cap-purple);
+  background: var(--cap-purple-tint);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-weight: 500;
+}
 
 .cap-status-center {
   font-size: 11.5px;

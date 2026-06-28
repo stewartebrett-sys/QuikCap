@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEditor, EditorContent, Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
+import ExtUnderline from "@tiptap/extension-underline";   // aliased — clashes with Lucide
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Highlight from "@tiptap/extension-highlight";
@@ -13,18 +13,32 @@ import Link from "@tiptap/extension-link";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
-import { Table } from "@tiptap/extension-table";
+import { Table as ExtTable } from "@tiptap/extension-table"; // aliased — clashes with Lucide
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
-import Image from "@tiptap/extension-image";
+import ExtImage from "@tiptap/extension-image";             // aliased — clashes with Lucide
 import Placeholder from "@tiptap/extension-placeholder";
+import {
+  Undo2, Redo2,
+  Bold, Italic, Underline, Strikethrough,
+  Palette, Highlighter, Eraser,
+  List, ListOrdered, ListChecks,
+  AlignLeft, AlignCenter, AlignRight,
+  Outdent, Indent,
+  Table, Link2, Image, Minus,
+  Flag, Pin,
+  MoreHorizontal,
+} from "lucide-react";
 
-// ─── Types ───────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────
 
 type SaveStatus = "saved" | "saving";
 
 const DRAFT_DEBOUNCE_MS = 400;
+const MIN_ZOOM = 80;
+const MAX_ZOOM = 160;
+const ZOOM_STEP = 5;
 
 const PRESET_COLORS = [
   { hex: "#000000", label: "Black" },
@@ -45,21 +59,24 @@ function getWordCount(editor: Editor | null): number {
   return text ? text.split(/\s+/).length : 0;
 }
 
-// ─── Main Component ───────────────────────────────────────
+// ─── Capture ─────────────────────────────────────────────
 
 function Capture() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [followUp, setFollowUp] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [wordCount, setWordCount] = useState(0);
+  const [zoom, setZoom] = useState(100);
+
   const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const editorInstanceRef = useRef<Editor | null>(null);
+  const editorAreaRef = useRef<HTMLDivElement>(null);
   const appWindow = getCurrentWindow();
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false }),
-      Underline,
+      ExtUnderline,
       TaskList,
       TaskItem.configure({ nested: true }),
       Highlight,
@@ -67,19 +84,21 @@ function Capture() {
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TextStyle,
       Color,
-      Table.configure({ resizable: false }),
+      ExtTable.configure({ resizable: false }),
       TableRow,
       TableCell,
       TableHeader,
-      Image.configure({ inline: false }),
-      Placeholder.configure({ placeholder: "Start typing…" }),
+      ExtImage.configure({ inline: false }),
+      Placeholder.configure({ placeholder: "Capture a thought…" }),
     ],
     autofocus: "end",
     editorProps: {
       attributes: { class: "cap-prose", spellcheck: "false" },
       handleKeyDown(_, event) {
+        const e = editorInstanceRef.current;
+
+        // Ctrl+Enter → finish note
         if (event.key === "Enter" && event.ctrlKey) {
-          const e = editorInstanceRef.current;
           if (!e) return false;
           const html = e.getHTML();
           if (!html.replace(/<[^>]*>/g, "").trim()) return true;
@@ -89,6 +108,30 @@ function Capture() {
           invoke("hide_capture").catch(console.error);
           return true;
         }
+
+        // Ctrl+K → link dialog
+        if (event.key === "k" && event.ctrlKey && !event.shiftKey) {
+          event.preventDefault();
+          if (!e) return true;
+          const prev = (e.getAttributes("link") as { href?: string }).href ?? "";
+          const url = window.prompt("URL", prev);
+          if (url !== null) {
+            if (url === "") e.chain().focus().unsetLink().run();
+            else e.chain().focus().setLink({ href: url }).run();
+          }
+          return true;
+        }
+
+        // Ctrl+Shift+V → paste as plain text
+        if (event.key === "v" && event.ctrlKey && event.shiftKey) {
+          event.preventDefault();
+          navigator.clipboard
+            .readText()
+            .then((text) => e?.commands.insertContent(text))
+            .catch(() => {});
+          return true;
+        }
+
         return false;
       },
     },
@@ -104,9 +147,7 @@ function Capture() {
   });
 
   // Keep ref in sync so handleKeyDown closure always sees the live editor
-  useEffect(() => {
-    editorInstanceRef.current = editor;
-  }, [editor]);
+  useEffect(() => { editorInstanceRef.current = editor; }, [editor]);
 
   // Load persisted draft
   useEffect(() => {
@@ -119,13 +160,13 @@ function Capture() {
     });
   }, [editor]);
 
-  // Refocus when the hotkey re-opens the window
+  // Re-focus when the global hotkey re-opens the window
   useEffect(() => {
     const p = listen("focus-editor", () => editor?.commands.focus("end"));
     return () => { p.then((u) => u()); };
   }, [editor]);
 
-  // Escape → hide (capture phase so it fires before Tiptap)
+  // Escape → hide (capture phase fires before Tiptap)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -135,6 +176,21 @@ function Capture() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  // Ctrl+Wheel → zoom editor text only (not the whole UI)
+  useEffect(() => {
+    const el = editorAreaRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((prev) =>
+        Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)))
+      );
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
   const handleFinish = () => {
@@ -162,32 +218,14 @@ function Capture() {
             Finish Note
           </button>
           <div className="cap-winctrl-group">
-            <button
-              className="cap-winctrl cap-winctrl--min"
-              onClick={() => appWindow.minimize()}
-              title="Minimize"
-            >
-              <svg width="10" height="1" viewBox="0 0 10 1">
-                <rect width="10" height="1" rx="0.5" fill="currentColor" />
-              </svg>
+            <button className="cap-winctrl cap-winctrl--min" onClick={() => appWindow.minimize()} title="Minimize">
+              <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" rx="0.5" fill="currentColor" /></svg>
             </button>
-            <button
-              className="cap-winctrl cap-winctrl--max"
-              onClick={() => appWindow.toggleMaximize()}
-              title="Maximize"
-            >
-              <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-                <rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1" />
-              </svg>
+            <button className="cap-winctrl cap-winctrl--max" onClick={() => appWindow.toggleMaximize()} title="Maximize">
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1" /></svg>
             </button>
-            <button
-              className="cap-winctrl cap-winctrl--close"
-              onClick={() => appWindow.hide()}
-              title="Close (Esc)"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10">
-                <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
+            <button className="cap-winctrl cap-winctrl--close" onClick={() => appWindow.hide()} title="Close (Esc)">
+              <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
             </button>
           </div>
         </div>
@@ -204,20 +242,20 @@ function Capture() {
         />
       )}
 
-      {/* ── Editor ── */}
-      <div className="cap-editor-area">
+      {/* ── Editor — zoom applied as CSS variable so only text scales ── */}
+      <div
+        ref={editorAreaRef}
+        className="cap-editor-area"
+        style={{ "--editor-zoom": String(zoom / 100) } as React.CSSProperties}
+      >
         <EditorContent editor={editor} className="cap-editor-mount" />
       </div>
 
       {/* ── Status bar ── */}
       <footer className="cap-status">
         <div className="cap-status-left">
-          <span
-            className={`cap-save-dot${saveStatus === "saved" ? " cap-save-dot--green" : ""}`}
-          />
-          <span className="cap-save-label">
-            {saveStatus === "saved" ? "Saved" : "Saving…"}
-          </span>
+          <span className={`cap-save-dot${saveStatus === "saved" ? " cap-save-dot--green" : ""}`} />
+          <span className="cap-save-label">{saveStatus === "saved" ? "Saved" : "Saving…"}</span>
         </div>
         <div className="cap-status-center">
           Press <kbd className="cap-kbd">Esc</kbd> to close
@@ -225,6 +263,7 @@ function Capture() {
           <kbd className="cap-kbd">Ctrl+↵</kbd> to finish note
         </div>
         <div className="cap-status-right">
+          {zoom !== 100 && <span className="cap-status-zoom">{zoom}%</span>}
           {wordCount} {wordCount === 1 ? "word" : "words"}
         </div>
       </footer>
@@ -249,15 +288,12 @@ function CaptureToolbar({ editor, followUp, onFollowUp, pinned, onPin }: Toolbar
   const overflowWrapRef = useRef<HTMLDivElement>(null);
   const currentColor = (editor.getAttributes("textStyle") as { color?: string }).color ?? "";
 
-  // Close any open popover when clicking outside
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (colorWrapRef.current && !colorWrapRef.current.contains(e.target as Node)) {
+      if (colorWrapRef.current && !colorWrapRef.current.contains(e.target as Node))
         setShowColors(false);
-      }
-      if (overflowWrapRef.current && !overflowWrapRef.current.contains(e.target as Node)) {
+      if (overflowWrapRef.current && !overflowWrapRef.current.contains(e.target as Node))
         setShowOverflow(false);
-      }
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -276,41 +312,39 @@ function CaptureToolbar({ editor, followUp, onFollowUp, pinned, onPin }: Toolbar
     if (url) editor.chain().focus().setImage({ src: url }).run();
   };
 
+  const ICON = 16; // consistent icon size throughout toolbar
+
   return (
     <div className="cap-toolbar" role="toolbar" aria-label="Formatting options">
 
-      {/* ── Editing ── */}
+      {/* Editing */}
       <TBtn title="Undo (Ctrl+Z)" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>
-        <IconUndo />
+        <Undo2 size={ICON} />
       </TBtn>
       <TBtn title="Redo (Ctrl+Y)" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}>
-        <IconRedo />
+        <Redo2 size={ICON} />
       </TBtn>
 
       <TbrSep />
 
-      {/* ── Text ── */}
+      {/* Text */}
       <TBtn title="Bold (Ctrl+B)" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
-        <IconBold />
+        <Bold size={ICON} />
       </TBtn>
       <TBtn title="Italic (Ctrl+I)" active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}>
-        <IconItalic />
+        <Italic size={ICON} />
       </TBtn>
       <TBtn title="Underline (Ctrl+U)" active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}>
-        <IconUnderline />
+        <Underline size={ICON} />
       </TBtn>
       <TBtn title="Strikethrough" active={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()}>
-        <IconStrike />
+        <Strikethrough size={ICON} />
       </TBtn>
 
-      {/* Text Color */}
+      {/* Text color with color-indicator bar */}
       <div className="tbr-pop-wrap" ref={colorWrapRef}>
-        <TBtn
-          title="Text color"
-          active={showColors || !!currentColor}
-          onClick={() => setShowColors((v) => !v)}
-        >
-          <IconColor color={currentColor || "#111827"} />
+        <TBtn title="Text color" active={showColors || !!currentColor} onClick={() => setShowColors((v) => !v)}>
+          <ColorIcon color={currentColor || "#111827"} size={ICON} />
         </TBtn>
         {showColors && (
           <div className="tbr-color-pop">
@@ -344,84 +378,76 @@ function CaptureToolbar({ editor, followUp, onFollowUp, pinned, onPin }: Toolbar
       </div>
 
       <TBtn title="Highlight" active={editor.isActive("highlight")} onClick={() => editor.chain().focus().toggleHighlight().run()}>
-        <IconHighlight />
+        <Highlighter size={ICON} />
       </TBtn>
       <TBtn title="Clear formatting" onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}>
-        <IconClearFormat />
+        <Eraser size={ICON} />
       </TBtn>
 
       <TbrSep />
 
-      {/* ── Lists ── */}
-      <TBtn title="Bullet list" active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>
-        <IconBulletList />
+      {/* Lists */}
+      <TBtn title="Bullet list (Ctrl+Shift+8)" active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+        <List size={ICON} />
       </TBtn>
-      <TBtn title="Numbered list" active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
-        <IconOrderedList />
+      <TBtn title="Numbered list (Ctrl+Shift+7)" active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+        <ListOrdered size={ICON} />
       </TBtn>
       <TBtn title="Checklist" active={editor.isActive("taskList")} onClick={() => editor.chain().focus().toggleTaskList().run()}>
-        <IconChecklist />
+        <ListChecks size={ICON} />
       </TBtn>
 
       <TbrSep />
 
-      {/* ── Paragraph ── */}
+      {/* Paragraph */}
       <TBtn title="Align left" active={editor.isActive({ textAlign: "left" })} onClick={() => editor.chain().focus().setTextAlign("left").run()}>
-        <IconAlignLeft />
+        <AlignLeft size={ICON} />
       </TBtn>
       <TBtn title="Align center" active={editor.isActive({ textAlign: "center" })} onClick={() => editor.chain().focus().setTextAlign("center").run()}>
-        <IconAlignCenter />
+        <AlignCenter size={ICON} />
       </TBtn>
       <TBtn title="Align right" active={editor.isActive({ textAlign: "right" })} onClick={() => editor.chain().focus().setTextAlign("right").run()}>
-        <IconAlignRight />
+        <AlignRight size={ICON} />
       </TBtn>
-      <TBtn
-        title="Outdent"
-        onClick={() => editor.chain().focus().liftListItem("listItem").run()}
-        disabled={!editor.can().liftListItem("listItem")}
-      >
-        <IconOutdent />
+      <TBtn title="Outdent" disabled={!editor.can().liftListItem("listItem")} onClick={() => editor.chain().focus().liftListItem("listItem").run()}>
+        <Outdent size={ICON} />
       </TBtn>
-      <TBtn
-        title="Indent"
-        onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
-        disabled={!editor.can().sinkListItem("listItem")}
-      >
-        <IconIndent />
+      <TBtn title="Indent" disabled={!editor.can().sinkListItem("listItem")} onClick={() => editor.chain().focus().sinkListItem("listItem").run()}>
+        <Indent size={ICON} />
       </TBtn>
 
       <TbrSep />
 
-      {/* ── Insert ── */}
+      {/* Insert */}
       <TBtn title="Insert table" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
-        <IconTable />
+        <Table size={ICON} />
       </TBtn>
-      <TBtn title="Insert link" active={editor.isActive("link")} onClick={applyLink}>
-        <IconLink />
+      <TBtn title="Link (Ctrl+K)" active={editor.isActive("link")} onClick={applyLink}>
+        <Link2 size={ICON} />
       </TBtn>
       <TBtn title="Insert image" onClick={applyImage}>
-        <IconImage />
+        <Image size={ICON} />
       </TBtn>
       <TBtn title="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
-        <IconHR />
+        <Minus size={ICON} />
       </TBtn>
 
       <TbrSep />
 
-      {/* ── Organization ── */}
+      {/* Organization */}
       <TBtn title="Follow up" active={followUp} onClick={onFollowUp}>
-        <IconFlag active={followUp} />
+        <Flag size={ICON} className={followUp ? "tbr-icon--flag-active" : ""} />
       </TBtn>
       <TBtn title="Pin note" active={pinned} onClick={onPin}>
-        <IconPin active={pinned} />
+        <Pin size={ICON} />
       </TBtn>
 
       <TbrSep />
 
-      {/* ── Overflow ── */}
+      {/* Overflow */}
       <div className="tbr-pop-wrap" ref={overflowWrapRef}>
         <TBtn title="More options" active={showOverflow} onClick={() => setShowOverflow((v) => !v)}>
-          <IconOverflow />
+          <MoreHorizontal size={ICON} />
         </TBtn>
         {showOverflow && (
           <div className="tbr-overflow-pop">
@@ -485,15 +511,7 @@ function OverflowSection({ label, children }: { label: string; children: React.R
   );
 }
 
-function OverflowBtn({
-  children,
-  active,
-  onSelect,
-}: {
-  children: React.ReactNode;
-  active?: boolean;
-  onSelect: () => void;
-}) {
+function OverflowBtn({ children, active, onSelect }: { children: React.ReactNode; active?: boolean; onSelect: () => void }) {
   return (
     <button
       type="button"
@@ -505,198 +523,15 @@ function OverflowBtn({
   );
 }
 
-// ─── SVG Icons ────────────────────────────────────────────
+// ─── Color icon: Palette glyph + colored underline bar ───
 
-const S = ({ children }: { children: React.ReactNode }) => (
-  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
-    {children}
-  </svg>
-);
-
-const IconUndo = () => (
-  <S>
-    <path d="M3.5 6.5H9a4 4 0 0 1 0 8H5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M3.5 3.5L1 6.5L3.5 9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-  </S>
-);
-
-const IconRedo = () => (
-  <S>
-    <path d="M12.5 6.5H7a4 4 0 0 0 0 8H11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M12.5 3.5L15 6.5L12.5 9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-  </S>
-);
-
-const IconBold = () => (
-  <S>
-    <path d="M4 2h4.5a3 3 0 0 1 1.9 5.3A3.5 3.5 0 0 1 8.5 14H4V2z" fill="currentColor" />
-    <path d="M4 8h4a1.5 1.5 0 0 0 0-3H4v3zm0 4.5h4.5a1.5 1.5 0 0 0 0-3H4v3z" fill="var(--cap-bg, #fff)" />
-  </S>
-);
-
-const IconItalic = () => (
-  <S>
-    <path d="M7 2h5M4 14h5M9.5 2L6.5 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </S>
-);
-
-const IconUnderline = () => (
-  <S>
-    <path d="M4 2v5a4 4 0 0 0 8 0V2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <path d="M2 14h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </S>
-);
-
-const IconStrike = () => (
-  <S>
-    <path d="M5 10a3 3 0 0 0 3 3 3 3 0 0 0 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M5 6a3 3 0 0 1 3-2 3 3 0 0 1 3 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M2 8.5h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconColor = ({ color }: { color: string }) => (
-  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden>
-    <text x="3" y="11" fontSize="10" fontWeight="700" fontFamily="system-ui, sans-serif" fill="currentColor">A</text>
-    <rect x="2" y="13" width="12" height="2" rx="1" fill={color} />
-  </svg>
-);
-
-const IconHighlight = () => (
-  <S>
-    <rect x="1" y="11" width="14" height="3" rx="1" fill="#fde68a" />
-    <path d="M5 10L8 2l3 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M6.2 7.5h3.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-  </S>
-);
-
-const IconClearFormat = () => (
-  <S>
-    <path d="M4 2h8M7 2v7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M11 10L14 13M14 10L11 13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M4 14h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconBulletList = () => (
-  <S>
-    <circle cx="3" cy="4.5" r="1.2" fill="currentColor" />
-    <circle cx="3" cy="8.5" r="1.2" fill="currentColor" />
-    <circle cx="3" cy="12.5" r="1.2" fill="currentColor" />
-    <path d="M6.5 4.5h7M6.5 8.5h7M6.5 12.5h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconOrderedList = () => (
-  <S>
-    <path d="M2 3h1.5v5M2 8h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M2 11c0-1 2-1 2 0s-2 1-2 2h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M7 4.5h7M7 8.5h7M7 12.5h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconChecklist = () => (
-  <S>
-    <rect x="1.5" y="2.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none" />
-    <path d="M2.8 5l1.2 1.2L6 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    <rect x="1.5" y="9.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none" />
-    <path d="M8.5 5h6M8.5 12h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconAlignLeft = () => (
-  <S>
-    <path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconAlignCenter = () => (
-  <S>
-    <path d="M2 4h12M4 8h8M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconAlignRight = () => (
-  <S>
-    <path d="M2 4h12M6 8h8M4 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconOutdent = () => (
-  <S>
-    <path d="M5 4h9M5 8h9M5 12h9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M4 6L1 8l3 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-  </S>
-);
-
-const IconIndent = () => (
-  <S>
-    <path d="M5 4h9M5 8h9M5 12h9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M1 6L4 8l-3 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-  </S>
-);
-
-const IconTable = () => (
-  <S>
-    <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none" />
-    <path d="M1.5 5.5h13M6 5.5V14.5" stroke="currentColor" strokeWidth="1.2" />
-  </S>
-);
-
-const IconLink = () => (
-  <S>
-    <path d="M6.5 9.5a3.5 3.5 0 0 0 4.95 0l1.5-1.5a3.5 3.5 0 0 0-4.95-4.95l-.88.88" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    <path d="M9.5 6.5a3.5 3.5 0 0 0-4.95 0L3.05 8a3.5 3.5 0 0 0 4.95 4.95l.88-.88" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-  </S>
-);
-
-const IconImage = () => (
-  <S>
-    <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none" />
-    <circle cx="5.5" cy="6" r="1.5" fill="currentColor" />
-    <path d="M1.5 11L5 7.5l3 3 2.5-2.5L14 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-  </S>
-);
-
-const IconHR = () => (
-  <S>
-    <path d="M2 8h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    <path d="M2 4h4M10 4h4M2 12h4M10 12h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeDasharray="2 1" opacity="0.4" />
-  </S>
-);
-
-const IconFlag = ({ active }: { active: boolean }) => (
-  <S>
-    <path
-      d="M4 2v12M4 2h8l-2 4 2 4H4"
-      stroke={active ? "#dc2626" : "currentColor"}
-      fill={active ? "#dc262620" : "none"}
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </S>
-);
-
-const IconPin = ({ active }: { active: boolean }) => (
-  <S>
-    <path
-      d="M9 2l5 5-3.5 1-3 3.5-1.5-1.5L8.5 6.5 7 5M2 14l4-4"
-      stroke={active ? "#7c3aed" : "currentColor"}
-      fill={active ? "#7c3aed20" : "none"}
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </S>
-);
-
-const IconOverflow = () => (
-  <S>
-    <circle cx="4" cy="8" r="1.3" fill="currentColor" />
-    <circle cx="8" cy="8" r="1.3" fill="currentColor" />
-    <circle cx="12" cy="8" r="1.3" fill="currentColor" />
-  </S>
-);
+function ColorIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <span className="tbr-color-icon">
+      <Palette size={size} />
+      <span className="tbr-color-icon-bar" style={{ background: color }} />
+    </span>
+  );
+}
 
 export default Capture;
