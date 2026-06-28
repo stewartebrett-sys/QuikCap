@@ -221,28 +221,15 @@
 .db-editor-panel {
   flex: 1;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.db-editor {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  resize: none;
-  color: #e5e7eb;
-  font-family: inherit;
-  font-size: 16px;
-  line-height: 1.75;
+/* RichEditor content padding for Database window */
+.db-editor-panel .re-editor-wrap .re-content {
   padding: 40px 52px;
+  font-size: 16px;
+  color: #e5e7eb;
+  line-height: 1.75;
   box-sizing: border-box;
-}
-
-.db-editor::placeholder {
-  color: #2a2a30;
-}
-
-.db-editor:disabled {
-  opacity: 1;
-  cursor: default;
 }

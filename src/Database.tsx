@@ -1,6 +1,7 @@
 import "./Database.css";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import RichEditor, { RichEditorHandle } from "./components/RichEditor";
 
 interface Note {
   id: string;
@@ -9,12 +10,26 @@ interface Note {
   updated_at: number;
 }
 
-function firstLine(text: string): string {
-  return text.split("\n").find((l) => l.trim()) ?? "Untitled";
+function htmlToPlain(html: string): string {
+  return html
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .trim();
 }
 
-function secondLine(text: string): string {
-  const lines = text.split("\n").filter((l) => l.trim());
+function firstLine(html: string): string {
+  const plain = htmlToPlain(html);
+  return plain.split("\n").find((l) => l.trim()) ?? "Untitled";
+}
+
+function secondLine(html: string): string {
+  const lines = htmlToPlain(html).split("\n").filter((l) => l.trim());
   return lines[1] ?? "";
 }
 
@@ -38,12 +53,13 @@ const AUTOSAVE_MS = 500;
 function Database() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [draft, setDraft] = useState("");
-  // null = draft is selected; string = saved note id is selected
+  // undefined = nothing selected; null = draft selected; string = saved note id
   const [selectedId, setSelectedId] = useState<string | null | undefined>(undefined);
-  const [editorText, setEditorText] = useState("");
   const [search, setSearch] = useState("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<RichEditorHandle>(null);
+  // Track what's in the editor so we can flush before switching
+  const editorHtmlRef = useRef<string>("");
 
   // Initial load
   useEffect(() => {
@@ -54,19 +70,20 @@ function Database() {
 
         if (fetchedDraft.trim()) {
           setSelectedId(null);
-          setEditorText(fetchedDraft);
+          editorHtmlRef.current = fetchedDraft;
+          editorRef.current?.setContent(fetchedDraft);
         } else if (fetchedNotes.length > 0) {
           setSelectedId(fetchedNotes[0].id);
-          setEditorText(fetchedNotes[0].text);
+          editorHtmlRef.current = fetchedNotes[0].text;
+          editorRef.current?.setContent(fetchedNotes[0].text);
         } else {
           setSelectedId(undefined);
-          setEditorText("");
         }
       }
     );
   }, []);
 
-  // Refresh note list when window regains focus (picks up new captures)
+  // Refresh when window regains focus
   useEffect(() => {
     const onFocus = () => {
       Promise.all([invoke<Note[]>("list_notes"), invoke<string>("load_draft")]).then(
@@ -80,45 +97,46 @@ function Database() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  const selectNote = (id: string | null) => {
-    // Flush any pending autosave before switching
+  const flushSave = () => {
     clearTimeout(saveTimer.current);
-    const currentText = editorRef.current?.value ?? editorText;
+    const html = editorHtmlRef.current;
     if (selectedId === null) {
-      invoke("save_draft", { text: currentText }).catch(console.error);
+      invoke("save_draft", { text: html }).catch(console.error);
     } else if (typeof selectedId === "string") {
-      invoke("update_note", { id: selectedId, text: currentText }).catch(console.error);
+      invoke("update_note", { id: selectedId, text: html }).catch(console.error);
       setNotes((prev) =>
         prev.map((n) =>
-          n.id === selectedId ? { ...n, text: currentText, updated_at: Date.now() } : n
+          n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n
         )
       );
     }
+  };
 
+  const selectNote = (id: string | null) => {
+    flushSave();
     setSelectedId(id);
-    if (id === null) {
-      setEditorText(draft);
-    } else {
-      const note = notes.find((n) => n.id === id);
-      setEditorText(note?.text ?? "");
-    }
+    const content = id === null ? draft : (notes.find((n) => n.id === id)?.text ?? "");
+    editorHtmlRef.current = content;
+    editorRef.current?.setContent(content);
     editorRef.current?.focus();
   };
 
-  const handleEditorChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const text = e.target.value;
-    setEditorText(text);
+  const handleEditorChange = (html: string) => {
+    editorHtmlRef.current = html;
 
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       if (selectedId === null) {
-        invoke("save_draft", { text }).catch(console.error);
-        setDraft(text);
+        invoke("save_draft", { text: html }).catch(console.error);
+        setDraft(html);
+        setNotes((prev) =>
+          prev.map((n) => (n.id === "draft" ? { ...n, text: html, updated_at: Date.now() } : n))
+        );
       } else if (typeof selectedId === "string") {
-        invoke("update_note", { id: selectedId, text }).catch(console.error);
+        invoke("update_note", { id: selectedId, text: html }).catch(console.error);
         setNotes((prev) =>
           prev.map((n) =>
-            n.id === selectedId ? { ...n, text, updated_at: Date.now() } : n
+            n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n
           )
         );
       }
@@ -126,9 +144,9 @@ function Database() {
   };
 
   const query = search.toLowerCase();
-  const showDraft = draft.trim() && (!query || draft.toLowerCase().includes(query));
+  const showDraft = draft.trim() && (!query || htmlToPlain(draft).toLowerCase().includes(query));
   const filteredNotes = notes.filter(
-    (n) => !query || n.text.toLowerCase().includes(query)
+    (n) => !query || htmlToPlain(n.text).toLowerCase().includes(query)
   );
 
   return (
@@ -161,7 +179,6 @@ function Database() {
         </div>
 
         <div className="db-cards">
-          {/* Active (unfinished) note pinned at top */}
           {showDraft && (
             <button
               className={`db-card db-card-active${selectedId === null ? " db-card-selected" : ""}`}
@@ -200,13 +217,9 @@ function Database() {
 
       {/* Editor */}
       <div className="db-editor-panel">
-        <textarea
+        <RichEditor
           ref={editorRef}
-          className="db-editor"
-          value={editorText}
           onChange={handleEditorChange}
-          spellCheck={false}
-          placeholder={selectedId === undefined ? "Select a note to edit" : ""}
           disabled={selectedId === undefined}
         />
       </div>
