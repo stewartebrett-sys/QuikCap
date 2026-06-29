@@ -141,6 +141,17 @@ const IndentExt = Extension.create({
         }
         return indentBlock(-1);
       },
+      // Backspace at the start of an indented paragraph/heading → outdent instead of
+      // joining with the previous block. Mirrors Microsoft Word's behaviour.
+      Backspace: () => {
+        const { $from, empty } = this.editor.state.selection;
+        if (!empty || $from.parentOffset !== 0) return false;
+        const parent = $from.parent;
+        if (parent.type.name !== "paragraph" && parent.type.name !== "heading") return false;
+        const indent = ((parent.attrs.indent as number) ?? 0);
+        if (indent <= 0) return false;
+        return indentBlock(-1);
+      },
     };
   },
 });
@@ -203,6 +214,24 @@ function Capture() {
         // Ctrl+Enter → finish note (delegates to always-current ref)
         if (event.key === "Enter" && event.ctrlKey) {
           finishNoteRef.current();
+          return true;
+        }
+
+        // Undo: Ctrl+Z (Windows/Linux) and Cmd+Z (Mac).
+        // Also accepts Ctrl+Z on Mac so the same muscle memory works cross-platform.
+        if (event.key === "z" && !event.shiftKey && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          e?.chain().focus().undo().run();
+          return true;
+        }
+
+        // Redo: Ctrl+Shift+Z / Cmd+Shift+Z, and Ctrl+Y (Windows convention).
+        if (
+          (event.key === "z" && event.shiftKey && (event.ctrlKey || event.metaKey)) ||
+          (event.key === "y" && event.ctrlKey && !event.shiftKey)
+        ) {
+          event.preventDefault();
+          e?.chain().focus().redo().run();
           return true;
         }
 
