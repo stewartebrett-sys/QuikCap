@@ -141,17 +141,6 @@ const IndentExt = Extension.create({
         }
         return indentBlock(-1);
       },
-      // Backspace at the start of an indented paragraph/heading → outdent instead of
-      // joining with the previous block. Mirrors Microsoft Word's behaviour.
-      Backspace: () => {
-        const { $from, empty } = this.editor.state.selection;
-        if (!empty || $from.parentOffset !== 0) return false;
-        const parent = $from.parent;
-        if (parent.type.name !== "paragraph" && parent.type.name !== "heading") return false;
-        const indent = ((parent.attrs.indent as number) ?? 0);
-        if (indent <= 0) return false;
-        return indentBlock(-1);
-      },
     };
   },
 });
@@ -215,6 +204,32 @@ function Capture() {
         if (event.key === "Enter" && event.ctrlKey) {
           finishNoteRef.current();
           return true;
+        }
+
+        // Backspace at the very start of an indented paragraph/heading → outdent.
+        // Handled here (view-level, highest priority) rather than in addKeyboardShortcuts
+        // so it always fires before ProseMirror's baseKeymap Backspace handler.
+        if (event.key === "Backspace" && e) {
+          const { state } = e;
+          const { $from, empty } = state.selection;
+          if (empty && $from.parentOffset === 0) {
+            const parent = $from.parent;
+            if (parent.type.name === "paragraph" || parent.type.name === "heading") {
+              const indent = ((parent.attrs.indent as number) ?? 0);
+              if (indent > 0) {
+                event.preventDefault();
+                // $from.before($from.depth) = position of the block's opening token
+                const nodePos = $from.before($from.depth);
+                e.view.dispatch(
+                  state.tr.setNodeMarkup(nodePos, undefined, {
+                    ...parent.attrs,
+                    indent: indent - 1,
+                  })
+                );
+                return true;
+              }
+            }
+          }
         }
 
         // Undo: Ctrl+Z (Windows/Linux) and Cmd+Z (Mac).
