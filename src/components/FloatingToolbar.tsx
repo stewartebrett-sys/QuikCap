@@ -41,7 +41,7 @@ const COLORS = [
 
 const TOOLBAR_H = 40; // approximate rendered height used for above-placement math
 const GAP       = 8;  // px gap between selection rect and toolbar
-const EDGE      = 12; // min px distance from viewport edge
+const PAD       = 20; // min px distance from either viewport edge
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -92,12 +92,23 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
     const rect = range.getBoundingClientRect();
     if (!rect.width && !rect.height) { setShow(false); return; }
 
-    // Horizontal center, clamped to viewport
-    const cx = Math.max(EDGE, Math.min(window.innerWidth - EDGE, rect.left + rect.width / 2));
+    // Measure the actual rendered toolbar width so we can keep both edges
+    // inside the viewport. The toolbar is always in the DOM (portal is always
+    // mounted) so offsetWidth is reliable even while the toolbar is invisible.
+    const toolbarW = wrapRef.current?.offsetWidth ?? 0;
+    const halfW    = toolbarW / 2;
 
-    // Prefer above the selection; flip below if there's not enough room
+    // Ideal center = horizontal midpoint of the selection.
+    // Clamp so that left edge ≥ PAD and right edge ≤ windowWidth − PAD.
+    const desired = rect.left + rect.width / 2;
+    const cx = Math.max(
+      PAD + halfW,
+      Math.min(window.innerWidth - PAD - halfW, desired),
+    );
+
+    // Prefer above the selection; flip below if there's not enough room.
     const aboveY = rect.top - TOOLBAR_H - GAP;
-    const flip   = aboveY < EDGE;
+    const flip   = aboveY < PAD;
     const y      = flip ? rect.bottom + GAP : aboveY;
 
     // Always produce a new object reference so React re-renders even when
