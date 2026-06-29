@@ -1,0 +1,162 @@
+/* ════════════════════════════════════════════════════════
+   Floating Toolbar — QuikCap
+   Rendered via React.createPortal into document.body.
+
+   `left` is set to the horizontal centre of the selection.
+   `transform: translateX(-50%)` keeps the toolbar centred
+   without needing to know its rendered width.
+   ════════════════════════════════════════════════════════ */
+
+.ftbr {
+  position: fixed;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 5px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.13),
+    0 1px 5px  rgba(0, 0, 0, 0.07);
+  user-select: none;
+  white-space: nowrap;
+
+  /* Hidden: faded out and shifted slightly toward the selection */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(5px);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+/* Visible: full opacity, at natural position */
+.ftbr--visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Flipped variant (toolbar below selection): slide down on appear */
+.ftbr--flip {
+  transform: translateX(-50%) translateY(-5px);
+}
+.ftbr--flip.ftbr--visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ── Separator ─────────────────────────────────────────── */
+
+.ftbr-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.1);
+  margin: 0 3px;
+  flex-shrink: 0;
+}
+
+/* ── Buttons ───────────────────────────────────────────── */
+
+.ftbr-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #4b5563;
+  cursor: pointer;
+  font-family: var(--cap-font);
+  flex-shrink: 0;
+  transition: background 80ms, color 80ms;
+}
+
+.ftbr-btn svg { flex-shrink: 0; }
+
+.ftbr-btn:hover  { background: rgba(0, 0, 0, 0.07); color: #111827; }
+.ftbr-btn:active { transform: scale(0.93); }
+
+.ftbr-btn--on {
+  background: var(--cap-purple-tint);
+  color: var(--cap-purple);
+}
+.ftbr-btn--on:hover {
+  background: var(--cap-purple-tint2);
+  color: var(--cap-purple-dark);
+}
+
+/* ── Color icon (Palette glyph + coloured bar) ─────────── */
+
+.ftbr-color-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 0;
+}
+
+.ftbr-color-bar {
+  display: block;
+  width: 12px;
+  height: 2.5px;
+  border-radius: 1.5px;
+  flex-shrink: 0;
+}
+
+/* ── Color picker popover ──────────────────────────────── */
+
+.ftbr-color-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ftbr-color-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.07);
+  padding: 8px;
+  z-index: 9010;
+  width: 116px;
+}
+
+.ftbr-color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.ftbr-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  transition: transform 80ms, border-color 80ms;
+}
+
+.ftbr-swatch:hover { transform: scale(1.15); }
+.ftbr-swatch--on   { border-color: var(--cap-purple); }
+
+.ftbr-color-reset {
+  width: 100%;
+  padding: 4px 0;
+  font-size: 11px;
+  color: var(--cap-text-sub);
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  font-family: var(--cap-font);
+  cursor: pointer;
+  text-align: center;
+  transition: color 80ms;
+}
+.ftbr-color-reset:hover { color: var(--cap-text); }

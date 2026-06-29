@@ -1,4 +1,5 @@
 import "./Capture.css";
+import { FloatingToolbar } from "./components/FloatingToolbar";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -443,6 +444,9 @@ function Capture() {
       >
         <EditorContent editor={editor} className="cap-editor-mount" />
       </div>
+
+      {/* Floating selection toolbar — rendered via portal, no layout impact */}
+      <FloatingToolbar editor={editor} />
 
       {/* ── Status bar ── */}
       <footer className="cap-status">
