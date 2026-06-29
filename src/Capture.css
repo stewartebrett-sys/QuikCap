@@ -80,7 +80,68 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
 .cap-header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+
+/* Header icon+label buttons (Pin, Follow Up) */
+
+.cap-hdr-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  transition: background 100ms, color 100ms;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.cap-hdr-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--cap-text);
+}
+
+.cap-hdr-btn:active {
+  background: rgba(0, 0, 0, 0.1);
+  transform: scale(0.97);
+}
+
+.cap-hdr-btn--active {
+  background: var(--cap-purple-tint);
+  color: var(--cap-purple);
+}
+
+.cap-hdr-btn--active:hover {
+  background: var(--cap-purple-tint2);
+  color: var(--cap-purple-dark);
+}
+
+/* Follow Up popover wrapper (position: relative so calendar anchors to it) */
+
+.cap-hdr-pop-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Follow-up date chip shown beside the Follow Up button */
+
+.cap-hdr-followup-chip {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--cap-purple);
+  background: var(--cap-purple-tint);
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Finish Note button */
@@ -136,15 +197,12 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
   align-items: center;
   flex-wrap: nowrap;
   gap: 1px;
-  padding: 5px 10px;
+  padding: 5px 8px;
   background: var(--cap-bg);
   border-bottom: 1px solid var(--cap-border);
   flex-shrink: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
 }
-
-.cap-toolbar::-webkit-scrollbar { display: none; }
 
 /* Separator */
 .tbr-sep {
@@ -199,9 +257,53 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
   pointer-events: none;
 }
 
-/* Follow-up flag turns red when active */
-.tbr-icon--flag-active {
-  color: var(--cap-red);
+/* ── Font size A− / % / A+ control ── */
+
+.tbr-zoom-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.tbr-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: #5b6472;
+  font-family: var(--cap-font);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 80ms, color 80ms;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tbr-zoom-btn--sm { font-size: 11px; }
+.tbr-zoom-btn--lg { font-size: 13px; }
+
+.tbr-zoom-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--cap-text);
+}
+
+.tbr-zoom-btn:active {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.tbr-zoom-pct {
+  font-size: 11px;
+  color: var(--cap-text-sub);
+  min-width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* ── Color icon (Palette glyph + colored underline bar) ── */
@@ -242,12 +344,12 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
   box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.07);
   padding: 10px;
   z-index: 200;
-  width: 148px;
+  width: 130px;
 }
 
 .tbr-color-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 5px;
   margin-bottom: 8px;
 }
@@ -278,53 +380,6 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
 }
 
 .tbr-color-reset:hover { color: var(--cap-text); }
-
-/* ── Overflow menu ── */
-
-.tbr-overflow-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: #fff;
-  border: 1px solid rgba(0,0,0,0.1);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.07);
-  padding: 6px;
-  z-index: 200;
-  min-width: 160px;
-}
-
-.tbr-overflow-section { padding: 4px 0; }
-
-.tbr-overflow-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--cap-text-dim);
-  padding: 2px 10px 4px;
-}
-
-.tbr-overflow-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 6px 10px;
-  font-size: 13px;
-  color: var(--cap-text);
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 80ms;
-}
-
-.tbr-overflow-item:hover { background: rgba(0,0,0,0.05); }
-.tbr-overflow-item--active { color: var(--cap-purple); font-weight: 500; }
-
-.tbr-overflow-divider {
-  height: 1px;
-  background: rgba(0,0,0,0.07);
-  margin: 4px 0;
-}
 
 /* ════════════════════════════════════════════════════════
    EDITOR AREA
@@ -563,15 +618,6 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
 
 .cap-status-right { justify-content: flex-end; gap: 8px; }
 
-.cap-status-zoom {
-  font-size: 10.5px;
-  color: var(--cap-purple);
-  background: var(--cap-purple-tint);
-  border-radius: 3px;
-  padding: 1px 5px;
-  font-weight: 500;
-}
-
 .cap-status-center {
   font-size: 11.5px;
   color: var(--cap-text-dim);
@@ -601,16 +647,6 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
   font-family: var(--cap-font);
   color: var(--cap-text-sub);
   line-height: 1.6;
-}
-
-/* ── Follow-up date badge in status bar ── */
-
-.cap-followup-date {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--cap-purple);
 }
 
 /* ════════════════════════════════════════════════════════

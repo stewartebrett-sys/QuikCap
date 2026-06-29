@@ -4,8 +4,9 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEditor, EditorContent, Editor } from "@tiptap/react";
+import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import ExtUnderline from "@tiptap/extension-underline";   // aliased — clashes with Lucide
+import ExtUnderline from "@tiptap/extension-underline";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Highlight from "@tiptap/extension-highlight";
@@ -13,11 +14,11 @@ import Link from "@tiptap/extension-link";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
-import { Table as ExtTable } from "@tiptap/extension-table"; // aliased — clashes with Lucide
+import { Table as ExtTable } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
-import ExtImage from "@tiptap/extension-image";             // aliased — clashes with Lucide
+import ExtImage from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
   Undo2, Redo2,
@@ -25,11 +26,9 @@ import {
   Palette, Highlighter, Eraser,
   List, ListOrdered, ListChecks,
   AlignLeft, AlignCenter, AlignRight,
-  Outdent, Indent,
   Table, Link2, Image, Minus,
-  Flag, Pin,
-  MoreHorizontal,
-  ChevronLeft, ChevronRight, CalendarCheck,
+  Pin, CalendarCheck,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 // ─── Constants ───────────────────────────────────────────
@@ -43,15 +42,12 @@ const ZOOM_STEP = 5;
 
 const PRESET_COLORS = [
   { hex: "#000000", label: "Black" },
-  { hex: "#374151", label: "Dark gray" },
   { hex: "#6b7280", label: "Gray" },
   { hex: "#dc2626", label: "Red" },
   { hex: "#ea580c", label: "Orange" },
-  { hex: "#d97706", label: "Amber" },
   { hex: "#16a34a", label: "Green" },
   { hex: "#2563eb", label: "Blue" },
   { hex: "#7c3aed", label: "Purple" },
-  { hex: "#db2777", label: "Pink" },
 ];
 
 const MONTH_NAMES = [
@@ -73,6 +69,82 @@ function toISODate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+// ─── Tab / Shift-Tab indent extension ────────────────────
+// Tab in lists: sink/lift list item.
+// Tab in paragraphs/headings: increase/decrease padding-left indent.
+// Always returns true so Tab never moves focus out of the editor.
+
+const IndentExt = Extension.create({
+  name: "indentExt",
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["paragraph", "heading"],
+        attributes: {
+          indent: {
+            default: 0,
+            renderHTML: ({ indent }) =>
+              (indent as number) > 0
+                ? { style: `padding-left:${(indent as number) * 2}em` }
+                : {},
+            parseHTML: (el) => {
+              const pl = (el as HTMLElement).style.paddingLeft;
+              return pl ? Math.round(parseFloat(pl) / 2) : 0;
+            },
+          },
+        },
+      },
+    ];
+  },
+
+  addKeyboardShortcuts() {
+    const indentBlock = (delta: 1 | -1): boolean => {
+      const { state, view } = this.editor;
+      const { from, to } = state.selection;
+      const tr = state.tr;
+      let changed = false;
+      state.doc.nodesBetween(from, to, (node, pos) => {
+        if (node.type.name === "paragraph" || node.type.name === "heading") {
+          const cur = ((node.attrs.indent as number) ?? 0);
+          const next = Math.min(8, Math.max(0, cur + delta));
+          if (next !== cur) {
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: next });
+            changed = true;
+          }
+        }
+      });
+      if (changed) view.dispatch(tr);
+      return true;
+    };
+
+    return {
+      Tab: () => {
+        if (this.editor.isActive("listItem")) {
+          this.editor.commands.sinkListItem("listItem");
+          return true;
+        }
+        if (this.editor.isActive("taskItem")) {
+          this.editor.commands.sinkListItem("taskItem");
+          return true;
+        }
+        return indentBlock(1);
+      },
+      "Shift-Tab": () => {
+        if (this.editor.isActive("listItem")) {
+          this.editor.commands.liftListItem("listItem");
+          return true;
+        }
+        if (this.editor.isActive("taskItem")) {
+          this.editor.commands.liftListItem("taskItem");
+          return true;
+        }
+        return indentBlock(-1);
+      },
+    };
+  },
+});
+
 // ─── Capture ─────────────────────────────────────────────
 
 function Capture() {
@@ -80,15 +152,28 @@ function Capture() {
   const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
   const [pinned, setPinned] = useState(false);
   const [zoom, setZoom] = useState(100);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const editorInstanceRef = useRef<Editor | null>(null);
   const editorAreaRef = useRef<HTMLDivElement>(null);
+  const calendarWrapRef = useRef<HTMLDivElement>(null);
   // Allows handleKeyDown (closed over at useEditor init) to always call the
   // latest finishNote closure without stale-capture issues.
   const finishNoteRef = useRef<() => void>(() => {});
 
   const appWindow = getCurrentWindow();
+
+  // Close calendar when clicking outside the header popover wrapper
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (calendarWrapRef.current && !calendarWrapRef.current.contains(e.target as Node)) {
+        setShowCalendar(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -107,6 +192,7 @@ function Capture() {
       TableHeader,
       ExtImage.configure({ inline: false }),
       Placeholder.configure({ placeholder: "Capture a thought…" }),
+      IndentExt,
     ],
     autofocus: "end",
     editorProps: {
@@ -220,8 +306,10 @@ function Capture() {
       invoke("finish_note", {
         text: html,
         followUpDate: followUpDate ? toISODate(followUpDate) : null,
+        pinned,
       }).catch(console.error);
       setFollowUpDate(null);
+      setPinned(false);
     }
 
     invoke("hide_capture").catch(console.error);
@@ -242,9 +330,44 @@ function Capture() {
         </div>
 
         <div className="cap-header-actions" data-tauri-no-drag>
+          {/* Pin */}
+          <button
+            className={`cap-hdr-btn${pinned ? " cap-hdr-btn--active" : ""}`}
+            onClick={() => setPinned((v) => !v)}
+            title={pinned ? "Unpin note" : "Pin note"}
+          >
+            <Pin size={13} strokeWidth={2} />
+            Pin
+          </button>
+
+          {/* Follow Up + calendar popover */}
+          <div className="cap-hdr-pop-wrap" ref={calendarWrapRef}>
+            <button
+              className={`cap-hdr-btn${(followUpDate !== null || showCalendar) ? " cap-hdr-btn--active" : ""}`}
+              onClick={() => setShowCalendar((v) => !v)}
+              title="Set follow-up date"
+            >
+              <CalendarCheck size={13} strokeWidth={2} />
+              Follow Up
+            </button>
+            {followUpDate && (
+              <span className="cap-hdr-followup-chip">{formatFollowUpDisplay(followUpDate)}</span>
+            )}
+            {showCalendar && (
+              <CalendarPicker
+                selected={followUpDate}
+                onSelect={setFollowUpDate}
+                onClose={() => setShowCalendar(false)}
+              />
+            )}
+          </div>
+
+          {/* Finish Note */}
           <button className="cap-finish-btn" onClick={finishNote}>
             Finish Note
           </button>
+
+          {/* Window controls */}
           <div className="cap-winctrl-group">
             <button className="cap-winctrl cap-winctrl--min" onClick={() => appWindow.minimize()} title="Minimize">
               <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" rx="0.5" fill="currentColor" /></svg>
@@ -263,10 +386,8 @@ function Capture() {
       {editor && (
         <CaptureToolbar
           editor={editor}
-          followUpDate={followUpDate}
-          onSetFollowUpDate={setFollowUpDate}
-          pinned={pinned}
-          onPin={() => setPinned((v) => !v)}
+          zoom={zoom}
+          onZoomChange={setZoom}
         />
       )}
 
@@ -290,14 +411,8 @@ function Capture() {
           &nbsp;·&nbsp;
           <kbd className="cap-kbd">Ctrl + Enter</kbd> to finish note
         </div>
-        <div className="cap-status-right">
-          {followUpDate && (
-            <span className="cap-followup-date">
-              <CalendarCheck size={11} strokeWidth={2} />
-              {formatFollowUpDisplay(followUpDate)}
-            </span>
-          )}
-        </div>
+        {/* Right spacer keeps center text visually centered */}
+        <div className="cap-status-right" />
       </footer>
     </div>
   );
@@ -307,29 +422,19 @@ function Capture() {
 
 interface ToolbarProps {
   editor: Editor;
-  followUpDate: Date | null;
-  onSetFollowUpDate: (date: Date | null) => void;
-  pinned: boolean;
-  onPin: () => void;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
 }
 
-function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin }: ToolbarProps) {
+function CaptureToolbar({ editor, zoom, onZoomChange }: ToolbarProps) {
   const [showColors, setShowColors] = useState(false);
-  const [showOverflow, setShowOverflow] = useState(false);
-  const [showCalendar, setShowCalendar] = useState(false);
   const colorWrapRef = useRef<HTMLDivElement>(null);
-  const overflowWrapRef = useRef<HTMLDivElement>(null);
-  const calendarWrapRef = useRef<HTMLDivElement>(null);
   const currentColor = (editor.getAttributes("textStyle") as { color?: string }).color ?? "";
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (colorWrapRef.current && !colorWrapRef.current.contains(e.target as Node))
         setShowColors(false);
-      if (overflowWrapRef.current && !overflowWrapRef.current.contains(e.target as Node))
-        setShowOverflow(false);
-      if (calendarWrapRef.current && !calendarWrapRef.current.contains(e.target as Node))
-        setShowCalendar(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -353,7 +458,7 @@ function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin
   return (
     <div className="cap-toolbar" role="toolbar" aria-label="Formatting options">
 
-      {/* Editing */}
+      {/* Undo / Redo */}
       <TBtn title="Undo (Ctrl+Z)" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>
         <Undo2 size={ICON} />
       </TBtn>
@@ -363,7 +468,28 @@ function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin
 
       <TbrSep />
 
-      {/* Text */}
+      {/* Font size — own group with seps on both sides */}
+      <div className="tbr-zoom-ctrl">
+        <button
+          className="tbr-zoom-btn tbr-zoom-btn--sm"
+          title="Decrease font size"
+          onMouseDown={(e) => { e.preventDefault(); onZoomChange(Math.max(MIN_ZOOM, zoom - ZOOM_STEP)); }}
+        >
+          A−
+        </button>
+        <span className="tbr-zoom-pct">{zoom}%</span>
+        <button
+          className="tbr-zoom-btn tbr-zoom-btn--lg"
+          title="Increase font size"
+          onMouseDown={(e) => { e.preventDefault(); onZoomChange(Math.min(MAX_ZOOM, zoom + ZOOM_STEP)); }}
+        >
+          A+
+        </button>
+      </div>
+
+      <TbrSep />
+
+      {/* Bold / Italic / Underline / Strikethrough */}
       <TBtn title="Bold (Ctrl+B)" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
         <Bold size={ICON} />
       </TBtn>
@@ -377,7 +503,9 @@ function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin
         <Strikethrough size={ICON} />
       </TBtn>
 
-      {/* Text color with color-indicator bar */}
+      <TbrSep />
+
+      {/* Font Color / Highlight / Clear Formatting */}
       <div className="tbr-pop-wrap" ref={colorWrapRef}>
         <TBtn title="Text color" active={showColors || !!currentColor} onClick={() => setShowColors((v) => !v)}>
           <ColorIcon color={currentColor || "#111827"} size={ICON} />
@@ -412,7 +540,6 @@ function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin
           </div>
         )}
       </div>
-
       <TBtn title="Highlight" active={editor.isActive("highlight")} onClick={() => editor.chain().focus().toggleHighlight().run()}>
         <Highlighter size={ICON} />
       </TBtn>
@@ -422,7 +549,7 @@ function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin
 
       <TbrSep />
 
-      {/* Lists */}
+      {/* Bullet List / Numbered List / Checklist */}
       <TBtn title="Bullet list (Ctrl+Shift+8)" active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>
         <List size={ICON} />
       </TBtn>
@@ -435,7 +562,7 @@ function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin
 
       <TbrSep />
 
-      {/* Paragraph */}
+      {/* Align Left / Center / Right */}
       <TBtn title="Align left" active={editor.isActive({ textAlign: "left" })} onClick={() => editor.chain().focus().setTextAlign("left").run()}>
         <AlignLeft size={ICON} />
       </TBtn>
@@ -445,16 +572,10 @@ function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin
       <TBtn title="Align right" active={editor.isActive({ textAlign: "right" })} onClick={() => editor.chain().focus().setTextAlign("right").run()}>
         <AlignRight size={ICON} />
       </TBtn>
-      <TBtn title="Outdent" disabled={!editor.can().liftListItem("listItem")} onClick={() => editor.chain().focus().liftListItem("listItem").run()}>
-        <Outdent size={ICON} />
-      </TBtn>
-      <TBtn title="Indent" disabled={!editor.can().sinkListItem("listItem")} onClick={() => editor.chain().focus().sinkListItem("listItem").run()}>
-        <Indent size={ICON} />
-      </TBtn>
 
       <TbrSep />
 
-      {/* Insert */}
+      {/* Table / Link / Image / Horizontal Rule */}
       <TBtn title="Insert table" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
         <Table size={ICON} />
       </TBtn>
@@ -467,53 +588,6 @@ function CaptureToolbar({ editor, followUpDate, onSetFollowUpDate, pinned, onPin
       <TBtn title="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
         <Minus size={ICON} />
       </TBtn>
-
-      <TbrSep />
-
-      {/* Organization */}
-      <div className="tbr-pop-wrap" ref={calendarWrapRef}>
-        <TBtn
-          title={followUpDate ? `Follow up: ${formatFollowUpDisplay(followUpDate)}` : "Follow up"}
-          active={!!followUpDate || showCalendar}
-          onClick={() => setShowCalendar((v) => !v)}
-        >
-          <Flag size={ICON} className={followUpDate ? "tbr-icon--flag-active" : ""} />
-        </TBtn>
-        {showCalendar && (
-          <CalendarPicker
-            selected={followUpDate}
-            onSelect={onSetFollowUpDate}
-            onClose={() => setShowCalendar(false)}
-          />
-        )}
-      </div>
-      <TBtn title="Pin note" active={pinned} onClick={onPin}>
-        <Pin size={ICON} />
-      </TBtn>
-
-      <TbrSep />
-
-      {/* Overflow */}
-      <div className="tbr-pop-wrap" ref={overflowWrapRef}>
-        <TBtn title="More options" active={showOverflow} onClick={() => setShowOverflow((v) => !v)}>
-          <MoreHorizontal size={ICON} />
-        </TBtn>
-        {showOverflow && (
-          <div className="tbr-overflow-pop">
-            <OverflowSection label="Headings">
-              <OverflowBtn active={editor.isActive("heading", { level: 1 })} onSelect={() => { editor.chain().focus().toggleHeading({ level: 1 }).run(); setShowOverflow(false); }}>Heading 1</OverflowBtn>
-              <OverflowBtn active={editor.isActive("heading", { level: 2 })} onSelect={() => { editor.chain().focus().toggleHeading({ level: 2 }).run(); setShowOverflow(false); }}>Heading 2</OverflowBtn>
-              <OverflowBtn active={editor.isActive("heading", { level: 3 })} onSelect={() => { editor.chain().focus().toggleHeading({ level: 3 }).run(); setShowOverflow(false); }}>Heading 3</OverflowBtn>
-              <OverflowBtn active={editor.isActive("paragraph")} onSelect={() => { editor.chain().focus().setParagraph().run(); setShowOverflow(false); }}>Normal text</OverflowBtn>
-            </OverflowSection>
-            <div className="tbr-overflow-divider" />
-            <OverflowSection label="Block">
-              <OverflowBtn active={editor.isActive("blockquote")} onSelect={() => { editor.chain().focus().toggleBlockquote().run(); setShowOverflow(false); }}>Blockquote</OverflowBtn>
-              <OverflowBtn active={editor.isActive("code")} onSelect={() => { editor.chain().focus().toggleCode().run(); setShowOverflow(false); }}>Inline code</OverflowBtn>
-            </OverflowSection>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -541,7 +615,7 @@ function CalendarPicker({ selected, onSelect, onClose }: CalendarPickerProps) {
     else setViewMonth((m) => m + 1);
   };
 
-  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay(); // 0 = Sun
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
 
   const isToday = (d: number) =>
@@ -555,7 +629,6 @@ function CalendarPicker({ selected, onSelect, onClose }: CalendarPickerProps) {
 
   const DAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
-  // Build cells: leading nulls for offset, then day numbers
   const cells: (number | null)[] = [
     ...Array(firstDayOfWeek).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
@@ -657,27 +730,6 @@ function TBtn({
 
 function TbrSep() {
   return <div className="tbr-sep" aria-hidden />;
-}
-
-function OverflowSection({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="tbr-overflow-section">
-      <div className="tbr-overflow-label">{label}</div>
-      {children}
-    </div>
-  );
-}
-
-function OverflowBtn({ children, active, onSelect }: { children: React.ReactNode; active?: boolean; onSelect: () => void }) {
-  return (
-    <button
-      type="button"
-      className={`tbr-overflow-item${active ? " tbr-overflow-item--active" : ""}`}
-      onMouseDown={(e) => { e.preventDefault(); onSelect(); }}
-    >
-      {children}
-    </button>
-  );
 }
 
 // ─── Color icon: Palette glyph + colored underline bar ───

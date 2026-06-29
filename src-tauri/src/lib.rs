@@ -15,6 +15,14 @@ struct Note {
     updated_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     follow_up_date: Option<String>,
+    #[serde(default)]
+    pinned: bool,
+    #[serde(default = "finished_status")]
+    status: String,
+}
+
+fn finished_status() -> String {
+    "finished".to_string()
 }
 
 fn data_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
@@ -47,7 +55,7 @@ fn save_draft(app: tauri::AppHandle, text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn finish_note(app: tauri::AppHandle, text: String, follow_up_date: Option<String>) -> Result<(), String> {
+fn finish_note(app: tauri::AppHandle, text: String, follow_up_date: Option<String>, pinned: bool) -> Result<(), String> {
     let text = text.trim().to_string();
     if text.is_empty() {
         return Ok(());
@@ -63,6 +71,8 @@ fn finish_note(app: tauri::AppHandle, text: String, follow_up_date: Option<Strin
         created_at: millis,
         updated_at: millis,
         follow_up_date,
+        pinned,
+        status: "finished".to_string(),
     };
 
     let notes_path = dir.join("notes.json");
