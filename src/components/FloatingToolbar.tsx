@@ -20,8 +20,10 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import {
-  Bold, Italic, Underline, Highlighter,
-  Palette, Link2, List, ListOrdered,
+  Bold, Italic, Underline, Strikethrough, Highlighter,
+  Palette, Eraser,
+  Link2, List, ListOrdered, ListChecks,
+  AlignLeft, AlignCenter, AlignRight,
 } from "lucide-react";
 
 // ─── Constants ───────────────────────────────────────────
@@ -156,23 +158,27 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       style={{ left: pos.x, top: pos.y }}
       onMouseDown={noSteal}
     >
-      {/* ── Text style ── */}
+      {/* ── Text: Bold / Italic / Underline / Strikethrough ── */}
       <FBtn active={editor.isActive("bold")}      title="Bold (Ctrl+B)"      onMD={() => editor.chain().focus().toggleBold().run()}>
-        <Bold        size={14} strokeWidth={1.75} />
+        <Bold         size={14} strokeWidth={1.75} />
       </FBtn>
       <FBtn active={editor.isActive("italic")}    title="Italic (Ctrl+I)"    onMD={() => editor.chain().focus().toggleItalic().run()}>
-        <Italic      size={14} strokeWidth={1.75} />
+        <Italic       size={14} strokeWidth={1.75} />
       </FBtn>
       <FBtn active={editor.isActive("underline")} title="Underline (Ctrl+U)" onMD={() => editor.chain().focus().toggleUnderline().run()}>
-        <Underline   size={14} strokeWidth={1.75} />
+        <Underline    size={14} strokeWidth={1.75} />
       </FBtn>
-      <FBtn active={editor.isActive("highlight")} title="Highlight"          onMD={() => editor.chain().focus().toggleHighlight().run()}>
-        <Highlighter size={14} strokeWidth={1.75} />
+      <FBtn active={editor.isActive("strike")}    title="Strikethrough"      onMD={() => editor.chain().focus().toggleStrike().run()}>
+        <Strikethrough size={14} strokeWidth={1.75} />
       </FBtn>
 
       <div className="ftbr-sep" />
 
-      {/* ── Text color ── */}
+      {/* ── Color: Highlight / Text Color / Clear Formatting ── */}
+      <FBtn active={editor.isActive("highlight")} title="Highlight" onMD={() => editor.chain().focus().toggleHighlight().run()}>
+        <Highlighter size={14} strokeWidth={1.75} />
+      </FBtn>
+
       <div className="ftbr-color-wrap">
         <FBtn
           active={!!activeColor || showColors}
@@ -213,21 +219,37 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         )}
       </div>
 
-      <div className="ftbr-sep" />
-
-      {/* ── Link ── */}
-      <FBtn active={editor.isActive("link")} title="Link (Ctrl+K)" onMD={applyLink}>
-        <Link2 size={14} strokeWidth={1.75} />
+      <FBtn title="Clear formatting" onMD={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}>
+        <Eraser size={14} strokeWidth={1.75} />
       </FBtn>
 
       <div className="ftbr-sep" />
 
-      {/* ── Lists ── */}
+      {/* ── Insert / List: Link / Bullet / Numbered / Checklist ── */}
+      <FBtn active={editor.isActive("link")} title="Link (Ctrl+K)" onMD={applyLink}>
+        <Link2 size={14} strokeWidth={1.75} />
+      </FBtn>
       <FBtn active={editor.isActive("bulletList")}  title="Bullet list"   onMD={() => editor.chain().focus().toggleBulletList().run()}>
         <List        size={14} strokeWidth={1.75} />
       </FBtn>
       <FBtn active={editor.isActive("orderedList")} title="Numbered list" onMD={() => editor.chain().focus().toggleOrderedList().run()}>
         <ListOrdered size={14} strokeWidth={1.75} />
+      </FBtn>
+      <FBtn active={editor.isActive("taskList")}    title="Checklist"     onMD={() => editor.chain().focus().toggleTaskList().run()}>
+        <ListChecks  size={14} strokeWidth={1.75} />
+      </FBtn>
+
+      <div className="ftbr-sep" />
+
+      {/* ── Alignment: Left / Center / Right ── */}
+      <FBtn active={editor.isActive({ textAlign: "left" })}   title="Align left"   onMD={() => editor.chain().focus().setTextAlign("left").run()}>
+        <AlignLeft   size={14} strokeWidth={1.75} />
+      </FBtn>
+      <FBtn active={editor.isActive({ textAlign: "center" })} title="Align center" onMD={() => editor.chain().focus().setTextAlign("center").run()}>
+        <AlignCenter size={14} strokeWidth={1.75} />
+      </FBtn>
+      <FBtn active={editor.isActive({ textAlign: "right" })}  title="Align right"  onMD={() => editor.chain().focus().setTextAlign("right").run()}>
+        <AlignRight  size={14} strokeWidth={1.75} />
       </FBtn>
     </div>
   );
