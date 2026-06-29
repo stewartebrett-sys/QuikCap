@@ -1,0 +1,63 @@
+/* ════════════════════════════════════════════════════════
+   ColorPickerPopover — shared styles
+   Used by both the main toolbar and floating toolbar.
+
+   Positioned absolute so the caller supplies a `position:
+   relative` wrapper. z-index: 9020 ensures the picker
+   appears above the floating toolbar (z-index: 9000)
+   when opened from the main toolbar, and above all other
+   content inside the floating toolbar's stacking context.
+   ════════════════════════════════════════════════════════ */
+
+.color-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.12),
+    0 2px 6px  rgba(0, 0, 0, 0.07);
+  padding: 10px;
+  z-index: 9020;
+  width: 126px;
+  user-select: none;
+}
+
+/* 4-column grid — 7 swatches fill two rows (4 + 3) */
+.color-pop-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.color-swatch {
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  transition: transform 80ms, border-color 80ms;
+}
+
+.color-swatch:hover { transform: scale(1.15); }
+.color-swatch--on   { border-color: var(--cap-purple); }
+
+.color-pop-reset {
+  width: 100%;
+  padding: 5px 0;
+  font-size: 11px;
+  color: var(--cap-text-sub);
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  font-family: var(--cap-font);
+  cursor: pointer;
+  text-align: center;
+  transition: color 80ms;
+}
+.color-pop-reset:hover { color: var(--cap-text); }

@@ -1,5 +1,6 @@
 import "./Capture.css";
 import { FloatingToolbar } from "./components/FloatingToolbar";
+import { ColorPickerPopover, getActiveColor } from "./components/ColorPickerPopover";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -40,16 +41,6 @@ const DRAFT_DEBOUNCE_MS = 400;
 const MIN_ZOOM = 80;
 const MAX_ZOOM = 160;
 const ZOOM_STEP = 5;
-
-const PRESET_COLORS = [
-  { hex: "#000000", label: "Black" },
-  { hex: "#6b7280", label: "Gray" },
-  { hex: "#dc2626", label: "Red" },
-  { hex: "#ea580c", label: "Orange" },
-  { hex: "#16a34a", label: "Green" },
-  { hex: "#2563eb", label: "Blue" },
-  { hex: "#7c3aed", label: "Purple" },
-];
 
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
@@ -477,7 +468,7 @@ interface ToolbarProps {
 function CaptureToolbar({ editor, zoom, onZoomChange }: ToolbarProps) {
   const [showColors, setShowColors] = useState(false);
   const colorWrapRef = useRef<HTMLDivElement>(null);
-  const currentColor = (editor.getAttributes("textStyle") as { color?: string }).color ?? "";
+  const currentColor = getActiveColor(editor);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -559,33 +550,7 @@ function CaptureToolbar({ editor, zoom, onZoomChange }: ToolbarProps) {
           <ColorIcon color={currentColor || "#111827"} size={ICON} />
         </TBtn>
         {showColors && (
-          <div className="tbr-color-pop">
-            <div className="tbr-color-grid">
-              {PRESET_COLORS.map(({ hex, label }) => (
-                <button
-                  key={hex}
-                  className={`tbr-color-swatch${currentColor === hex ? " tbr-color-swatch--active" : ""}`}
-                  style={{ background: hex }}
-                  title={label}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    editor.chain().focus().setColor(hex).run();
-                    setShowColors(false);
-                  }}
-                />
-              ))}
-            </div>
-            <button
-              className="tbr-color-reset"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                editor.chain().focus().unsetColor().run();
-                setShowColors(false);
-              }}
-            >
-              Reset color
-            </button>
-          </div>
+          <ColorPickerPopover editor={editor} onClose={() => setShowColors(false)} />
         )}
       </div>
       <TBtn title="Highlight" active={editor.isActive("highlight")} onClick={() => editor.chain().focus().toggleHighlight().run()}>

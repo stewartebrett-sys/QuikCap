@@ -105,58 +105,10 @@
   flex-shrink: 0;
 }
 
-/* ── Color picker popover ──────────────────────────────── */
+/* ── Color picker popover wrapper ──────────────────────── */
+/* Popover itself rendered by ColorPickerPopover component. */
 
 .ftbr-color-wrap {
   position: relative;
   flex-shrink: 0;
 }
-
-.ftbr-color-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.07);
-  padding: 8px;
-  z-index: 9010;
-  width: 116px;
-}
-
-.ftbr-color-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
-  margin-bottom: 6px;
-}
-
-.ftbr-swatch {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
-  transition: transform 80ms, border-color 80ms;
-}
-
-.ftbr-swatch:hover { transform: scale(1.15); }
-.ftbr-swatch--on   { border-color: var(--cap-purple); }
-
-.ftbr-color-reset {
-  width: 100%;
-  padding: 4px 0;
-  font-size: 11px;
-  color: var(--cap-text-sub);
-  background: none;
-  border: none;
-  border-top: 1px solid rgba(0, 0, 0, 0.07);
-  font-family: var(--cap-font);
-  cursor: pointer;
-  text-align: center;
-  transition: color 80ms;
-}
-.ftbr-color-reset:hover { color: var(--cap-text); }

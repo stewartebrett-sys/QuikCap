@@ -25,19 +25,7 @@ import {
   Link2, List, ListOrdered, ListChecks,
   AlignLeft, AlignCenter, AlignRight,
 } from "lucide-react";
-
-// ─── Constants ───────────────────────────────────────────
-
-// Matches the main toolbar palette exactly.
-const COLORS = [
-  { hex: "#000000", label: "Black"  },
-  { hex: "#6b7280", label: "Gray"   },
-  { hex: "#dc2626", label: "Red"    },
-  { hex: "#ea580c", label: "Orange" },
-  { hex: "#16a34a", label: "Green"  },
-  { hex: "#2563eb", label: "Blue"   },
-  { hex: "#7c3aed", label: "Purple" },
-];
+import { ColorPickerPopover, getActiveColor } from "./ColorPickerPopover";
 
 const TOOLBAR_H = 40; // approximate rendered height used for above-placement math
 const GAP       = 8;  // px gap between selection rect and toolbar
@@ -145,7 +133,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
 
   if (!editor) return null;
 
-  const activeColor = (editor.getAttributes("textStyle") as { color?: string }).color ?? "";
+  const activeColor = getActiveColor(editor);
 
   // Prevent focus steal on every mousedown in the toolbar
   const noSteal = (e: React.MouseEvent) => e.preventDefault();
@@ -200,33 +188,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         </FBtn>
 
         {showColors && (
-          <div className="ftbr-color-pop">
-            <div className="ftbr-color-grid">
-              {COLORS.map(({ hex, label }) => (
-                <button
-                  key={hex}
-                  className={`ftbr-swatch${activeColor === hex ? " ftbr-swatch--on" : ""}`}
-                  style={{ background: hex }}
-                  title={label}
-                  onMouseDown={e => {
-                    e.preventDefault();
-                    editor.chain().focus().setColor(hex).run();
-                    setShowColors(false);
-                  }}
-                />
-              ))}
-            </div>
-            <button
-              className="ftbr-color-reset"
-              onMouseDown={e => {
-                e.preventDefault();
-                editor.chain().focus().unsetColor().run();
-                setShowColors(false);
-              }}
-            >
-              Reset color
-            </button>
-          </div>
+          <ColorPickerPopover editor={editor} onClose={() => setShowColors(false)} />
         )}
       </div>
 
