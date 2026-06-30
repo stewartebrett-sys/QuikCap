@@ -133,18 +133,24 @@ function Database() {
   const handleEditorChange = (html: string) => {
     editorHtmlRef.current = html;
 
+    // Update list immediately so title and date reflect every keystroke
+    if (selectedId === null) {
+      setDraft(html);
+    } else if (typeof selectedId === "string") {
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n
+        )
+      );
+    }
+
+    // Debounce the backend write
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       if (selectedId === null) {
         invoke("save_draft", { text: html }).catch(console.error);
-        setDraft(html);
       } else if (typeof selectedId === "string") {
         invoke("update_note", { id: selectedId, text: html }).catch(console.error);
-        setNotes((prev) =>
-          prev.map((n) =>
-            n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n
-          )
-        );
       }
     }, AUTOSAVE_MS);
   };

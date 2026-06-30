@@ -1,10 +1,8 @@
 /* ════════════════════════════════════════════════════════
-   RichEditor — light theme, matches Quick Capture.
-   Typography reuses .cap-prose from Capture.css (globally
-   available in the shared bundle).
+   RichEditor — document-style editor for the Notes Database.
    ════════════════════════════════════════════════════════ */
 
-/* ── Wrapper ── */
+/* ── Wrapper: continuous white surface, no container chrome ── */
 
 .re-wrap {
   display: flex;
@@ -20,19 +18,19 @@
   pointer-events: none;
 }
 
-/* ── Editor area ── */
+/* ── Scrollable writing area ── */
 
 .re-editor-area {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
 
 .re-editor-area::-webkit-scrollbar { width: 5px; }
 .re-editor-area::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 3px;
 }
 
@@ -43,15 +41,18 @@
   min-height: 100%;
 }
 
-/* Apply the Capture-style zoom so Ctrl+Wheel and A−/A+ work */
+/* ── Document layout: wide margins, 12pt body, system fonts ── */
+
 .re-editor-area .cap-prose {
-  font-size: calc(17px * var(--editor-zoom, 1));
-  padding: 50px 72px 48px;
+  font-size: calc(16px * var(--editor-zoom, 1));
+  padding: 48px 96px 64px;
 }
 
-/* Small overrides so the prose looks at home in the Database panel */
+/* ── Typography overrides for the document context ── */
+
 .re-prose-overrides {
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
   caret-color: var(--cap-purple);
   color: var(--cap-text);
-  line-height: 1.75;
+  line-height: 1.45;
 }
