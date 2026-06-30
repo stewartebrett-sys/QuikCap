@@ -182,10 +182,10 @@
 .db-cards {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0 8px;
+  padding: 2px 0 8px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
@@ -200,8 +200,8 @@
 
 .db-card {
   width: 100%;
-  height: 36px;
-  background: var(--cap-bg);
+  height: 34px;
+  background: transparent;
   border: none;
   border-radius: 0;
   padding: 0 12px;
@@ -211,39 +211,37 @@
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  transition: background 60ms;
+  transition: background 50ms;
   flex-shrink: 0;
 }
 
-/* ── Hover: barely-there gray lift ── */
+/* ── Hover: faint surface tint ── */
 
 .db-card:hover {
-  background: rgba(0, 0, 0, 0.035);
+  background: rgba(0, 0, 0, 0.04);
 }
 
-/* ── Selected: lavender tint + 3px left accent bar ── */
+/* ── Selected: light lavender fill only, no accent bar ── */
 
 .db-card-selected {
-  background: var(--cap-purple-tint);
-  box-shadow: inset 3px 0 0 var(--cap-purple);
+  background: rgba(124, 58, 237, 0.07);
 }
 
 .db-card-selected:hover {
   background: rgba(124, 58, 237, 0.1);
 }
 
-/* ── Title: medium weight by default, semibold when selected ── */
+/* ── Title: regular weight by default, semibold when selected ── */
 
 .db-card-title {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--cap-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.1px;
 }
 
 .db-card-selected .db-card-title {
@@ -260,7 +258,7 @@
 }
 
 .db-card-date {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--cap-text-dim);
   white-space: nowrap;
 }
