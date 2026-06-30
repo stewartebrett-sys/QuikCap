@@ -1,3 +1,28 @@
+/* ── Design tokens (shared by all windows) ── */
+
+:root {
+  --cap-bg:           #ffffff;
+  --cap-surface:      #f9f9fb;
+  --cap-border:       rgba(0, 0, 0, 0.07);
+  --cap-border-soft:  rgba(0, 0, 0, 0.05);
+
+  --cap-text:         #111827;
+  --cap-text-sub:     #6b7280;
+  --cap-text-dim:     #9ca3af;
+
+  --cap-purple:       #7c3aed;
+  --cap-purple-dark:  #6d28d9;
+  --cap-purple-deep:  #5b21b6;
+  --cap-purple-tint:  rgba(124, 58, 237, 0.08);
+  --cap-purple-tint2: rgba(124, 58, 237, 0.16);
+
+  --cap-green:        #10b981;
+  --cap-red:          #ef4444;
+
+  --cap-radius:       6px;
+  --cap-font:         Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 html,
 body,
 #root {
@@ -8,5 +33,5 @@ body,
 }
 
 body {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--cap-font);
 }

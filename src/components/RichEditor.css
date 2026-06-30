@@ -46,7 +46,7 @@
 /* Apply the Capture-style zoom so Ctrl+Wheel and A−/A+ work */
 .re-editor-area .cap-prose {
   font-size: calc(17px * var(--editor-zoom, 1));
-  padding: 36px 56px 40px;
+  padding: 50px 72px 48px;
 }
 
 /* Small overrides so the prose looks at home in the Database panel */

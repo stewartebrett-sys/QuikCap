@@ -1,118 +1,206 @@
-/* ── Layout ─────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════
+   Notes Database — light theme, matches Quick Capture.
+   ════════════════════════════════════════════════════════ */
+
+/* ── Root ── */
 
 .db {
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
-  background: #0d0d0f;
-  color: #e5e7eb;
-}
-
-/* ── Sidebar ─────────────────────────────────────────── */
-
-.db-sidebar {
-  width: 180px;
-  flex-shrink: 0;
-  background: #111113;
-  border-right: 1px solid #1f1f23;
-  display: flex;
-  flex-direction: column;
-  padding: 24px 0 16px;
-}
-
-.db-logo {
-  font-size: 15px;
-  font-weight: 700;
-  color: #f9fafb;
-  letter-spacing: -0.3px;
-  padding: 0 18px 28px;
-}
-
-.db-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 0 8px;
-}
-
-.db-nav-item {
-  padding: 7px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: default;
-}
-
-.db-nav-active {
-  background: #1e1e24;
-  color: #f9fafb;
-  font-weight: 500;
-}
-
-.db-nav-inactive {
-  color: #4b5563;
-}
-
-/* ── Notes list ──────────────────────────────────────── */
-
-.db-list {
-  width: 280px;
-  flex-shrink: 0;
-  border-right: 1px solid #1f1f23;
-  display: flex;
-  flex-direction: column;
+  background: var(--cap-bg);
+  font-family: var(--cap-font);
+  color: var(--cap-text);
   overflow: hidden;
 }
 
-.db-list-header {
+/* ════════════════════════════════════════════════════════
+   TOP NAV
+   ════════════════════════════════════════════════════════ */
+
+.db-topnav {
+  display: flex;
+  align-items: stretch;
+  height: 46px;
+  padding: 0 8px 0 16px;
+  background: var(--cap-surface);
+  border-bottom: 1px solid var(--cap-border);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* Logo */
+
+.db-logo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 20px;
+  flex-shrink: 0;
+}
+
+.db-logo-icon {
+  flex-shrink: 0;
+}
+
+.db-logo-text {
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  color: var(--cap-text);
+}
+
+/* Divider between logo and tabs */
+
+.db-logo::after {
+  content: "";
+  display: block;
+  width: 1px;
+  height: 18px;
+  background: var(--cap-border);
+  margin-left: 20px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* Tabs */
+
+.db-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.db-tab {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 16px;
   font-size: 13px;
+  font-family: var(--cap-font);
+  font-weight: 500;
+  color: var(--cap-text-sub);
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: color 100ms;
+  white-space: nowrap;
+}
+
+.db-tab:hover {
+  color: var(--cap-text);
+}
+
+/* Active tab: bold text + purple bottom rule */
+
+.db-tab--active {
+  color: var(--cap-text);
   font-weight: 600;
-  color: #9ca3af;
-  letter-spacing: 0.04em;
+}
+
+.db-tab--active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--cap-purple);
+  border-radius: 2px 2px 0 0;
+}
+
+/* Inactive tab: dimmed, no pointer */
+
+.db-tab--inactive {
+  color: var(--cap-text-dim);
+  cursor: default;
+}
+
+.db-tab--inactive:hover {
+  color: var(--cap-text-dim);
+}
+
+/* ════════════════════════════════════════════════════════
+   BODY (notes list + editor, side by side)
+   ════════════════════════════════════════════════════════ */
+
+.db-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ════════════════════════════════════════════════════════
+   NOTES LIST
+   ════════════════════════════════════════════════════════ */
+
+.db-list {
+  width: 272px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--cap-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--cap-surface);
+}
+
+.db-list-header {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--cap-text-dim);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 20px 16px 12px;
+  padding: 16px 16px 8px;
+  flex-shrink: 0;
 }
 
 .db-controls {
   display: flex;
   gap: 6px;
   padding: 0 10px 10px;
+  flex-shrink: 0;
 }
 
 .db-search {
   flex: 1;
   min-width: 0;
-  background: #1a1a1e;
-  border: 1px solid #2a2a30;
-  border-radius: 6px;
-  color: #e5e7eb;
+  background: var(--cap-bg);
+  border: 1px solid var(--cap-border);
+  border-radius: var(--cap-radius);
+  color: var(--cap-text);
   font-size: 12px;
-  font-family: inherit;
+  font-family: var(--cap-font);
   padding: 5px 9px;
   outline: none;
+  transition: border-color 120ms, box-shadow 120ms;
 }
 
 .db-search::placeholder {
-  color: #374151;
+  color: var(--cap-text-dim);
 }
 
 .db-search:focus {
-  border-color: #3b3b46;
+  border-color: rgba(124, 58, 237, 0.35);
+  box-shadow: 0 0 0 2.5px rgba(124, 58, 237, 0.09);
 }
 
 .db-sort {
-  background: #1a1a1e;
-  border: 1px solid #2a2a30;
-  border-radius: 6px;
-  color: #6b7280;
+  background: var(--cap-bg);
+  border: 1px solid var(--cap-border);
+  border-radius: var(--cap-radius);
+  color: var(--cap-text-sub);
   font-size: 11px;
-  font-family: inherit;
+  font-family: var(--cap-font);
   padding: 5px 7px;
   outline: none;
   cursor: pointer;
   flex-shrink: 0;
 }
 
-/* ── Note cards ──────────────────────────────────────── */
+/* ── Note cards ── */
 
 .db-cards {
   flex: 1;
@@ -120,21 +208,20 @@
   padding: 0 8px 8px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
 
-.db-cards::-webkit-scrollbar {
-  width: 4px;
-}
-
+.db-cards::-webkit-scrollbar { width: 4px; }
 .db-cards::-webkit-scrollbar-thumb {
-  background: #2a2a30;
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 2px;
 }
 
 .db-card {
   width: 100%;
-  background: #18181c;
+  background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
   padding: 9px 11px 8px;
@@ -147,27 +234,34 @@
 }
 
 .db-card:hover {
-  background: #1e1e24;
-  border-color: #2a2a30;
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.06);
 }
 
 .db-card-selected {
-  background: #1e1e28;
-  border-color: #35354a;
+  background: var(--cap-purple-tint);
+  border-color: rgba(124, 58, 237, 0.18);
 }
 
+.db-card-selected:hover {
+  background: var(--cap-purple-tint);
+  border-color: rgba(124, 58, 237, 0.22);
+}
+
+/* Draft / active note — subtle amber tint */
+
 .db-card-active {
-  border-color: #78350f50;
-  background: #171410;
+  border-color: rgba(217, 119, 6, 0.15);
+  background: rgba(251, 191, 36, 0.04);
 }
 
 .db-card-active:hover {
-  background: #1c1812;
+  background: rgba(251, 191, 36, 0.07);
 }
 
 .db-card-active.db-card-selected {
-  border-color: #b45309;
-  background: #1c1812;
+  background: var(--cap-purple-tint);
+  border-color: rgba(124, 58, 237, 0.18);
 }
 
 .db-card-top {
@@ -180,23 +274,25 @@
 .db-card-title {
   font-size: 13px;
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--cap-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Amber dot = note is live in Capture window */
+
 .db-active-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #ca8a04;
+  background: #d97706;
   flex-shrink: 0;
 }
 
 .db-card-preview {
   font-size: 12px;
-  color: #4b5563;
+  color: var(--cap-text-sub);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -205,31 +301,25 @@
 
 .db-card-date {
   font-size: 11px;
-  color: #374151;
+  color: var(--cap-text-dim);
   margin-top: 1px;
 }
 
 .db-empty {
   font-size: 13px;
-  color: #374151;
-  padding: 16px 4px;
+  color: var(--cap-text-dim);
+  padding: 24px 4px;
   text-align: center;
 }
 
-/* ── Editor ──────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════
+   EDITOR PANEL
+   ════════════════════════════════════════════════════════ */
 
 .db-editor-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-/* RichEditor content padding for Database window */
-.db-editor-panel .re-editor-wrap .re-content {
-  padding: 40px 52px;
-  font-size: 16px;
-  color: #e5e7eb;
-  line-height: 1.75;
-  box-sizing: border-box;
+  background: var(--cap-bg);
 }

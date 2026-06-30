@@ -151,77 +151,87 @@ function Database() {
 
   return (
     <div className="db">
-      {/* Sidebar */}
-      <aside className="db-sidebar">
-        <div className="db-logo">QuikCap</div>
-        <nav className="db-nav">
-          <div className="db-nav-item db-nav-active">Saved Notes</div>
-          <div className="db-nav-item db-nav-inactive">Settings</div>
-          <div className="db-nav-item db-nav-inactive">Hotkeys</div>
-          <div className="db-nav-item db-nav-inactive">About</div>
-        </nav>
-      </aside>
 
-      {/* Notes list */}
-      <div className="db-list">
-        <div className="db-list-header">Saved Notes</div>
-        <div className="db-controls">
-          <input
-            className="db-search"
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+      {/* ── Top nav ── */}
+      <nav className="db-topnav">
+        <div className="db-logo">
+          <svg className="db-logo-icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
+            <path d="M9 1L2 9.5H7.5L7 15L14 6.5H8.5L9 1Z" fill="#7c3aed" strokeLinejoin="round" />
+          </svg>
+          <span className="db-logo-text">QuikCap</span>
+        </div>
+
+        <div className="db-tabs">
+          <button className="db-tab db-tab--active">Saved Notes</button>
+          <button className="db-tab db-tab--inactive">Settings</button>
+        </div>
+      </nav>
+
+      {/* ── Body ── */}
+      <div className="db-body">
+
+        {/* Notes list */}
+        <div className="db-list">
+          <div className="db-list-header">Notes</div>
+          <div className="db-controls">
+            <input
+              className="db-search"
+              type="text"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select className="db-sort">
+              <option>Last updated</option>
+            </select>
+          </div>
+
+          <div className="db-cards">
+            {showDraft && (
+              <button
+                className={`db-card db-card-active${selectedId === null ? " db-card-selected" : ""}`}
+                onClick={() => selectNote(null)}
+              >
+                <div className="db-card-top">
+                  <span className="db-card-title">{firstLine(draft)}</span>
+                  <span className="db-active-dot" />
+                </div>
+                <div className="db-card-preview">{secondLine(draft)}</div>
+                <div className="db-card-date">Active</div>
+              </button>
+            )}
+
+            {filteredNotes.map((note) => (
+              <button
+                key={note.id}
+                className={`db-card${selectedId === note.id ? " db-card-selected" : ""}`}
+                onClick={() => selectNote(note.id)}
+              >
+                <div className="db-card-top">
+                  <span className="db-card-title">{firstLine(note.text)}</span>
+                </div>
+                <div className="db-card-preview">{secondLine(note.text)}</div>
+                <div className="db-card-date">{formatDate(note.updated_at)}</div>
+              </button>
+            ))}
+
+            {!showDraft && filteredNotes.length === 0 && (
+              <div className="db-empty">
+                {search ? "No notes match your search." : "No saved notes yet."}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Editor */}
+        <div className="db-editor-panel">
+          <RichEditor
+            ref={editorRef}
+            onChange={handleEditorChange}
+            disabled={selectedId === undefined}
           />
-          <select className="db-sort">
-            <option>Last updated</option>
-          </select>
         </div>
 
-        <div className="db-cards">
-          {showDraft && (
-            <button
-              className={`db-card db-card-active${selectedId === null ? " db-card-selected" : ""}`}
-              onClick={() => selectNote(null)}
-            >
-              <div className="db-card-top">
-                <span className="db-card-title">{firstLine(draft)}</span>
-                <span className="db-active-dot" />
-              </div>
-              <div className="db-card-preview">{secondLine(draft)}</div>
-              <div className="db-card-date">Active</div>
-            </button>
-          )}
-
-          {filteredNotes.map((note) => (
-            <button
-              key={note.id}
-              className={`db-card${selectedId === note.id ? " db-card-selected" : ""}`}
-              onClick={() => selectNote(note.id)}
-            >
-              <div className="db-card-top">
-                <span className="db-card-title">{firstLine(note.text)}</span>
-              </div>
-              <div className="db-card-preview">{secondLine(note.text)}</div>
-              <div className="db-card-date">{formatDate(note.updated_at)}</div>
-            </button>
-          ))}
-
-          {!showDraft && filteredNotes.length === 0 && (
-            <div className="db-empty">
-              {search ? "No notes match your search." : "No saved notes yet."}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Editor */}
-      <div className="db-editor-panel">
-        <RichEditor
-          ref={editorRef}
-          onChange={handleEditorChange}
-          disabled={selectedId === undefined}
-        />
       </div>
     </div>
   );
