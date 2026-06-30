@@ -1,188 +1,225 @@
+/**
+ * RichEditor — full-featured Tiptap editor shared by the Notes Database.
+ *
+ * Uses the exact same extensions, toolbar (EditorToolbar), floating
+ * selection toolbar (FloatingToolbar), and keyboard shortcuts as the
+ * Quick Capture window so both editing experiences are identical.
+ */
+
 import "./RichEditor.css";
-import { useEffect, useImperativeHandle, forwardRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
+import ExtUnderline from "@tiptap/extension-underline";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
+import TextAlign from "@tiptap/extension-text-align";
+import { TextStyle } from "@tiptap/extension-text-style";
+import Color from "@tiptap/extension-color";
+import { Table as ExtTable } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
+import ExtImage from "@tiptap/extension-image";
+import Placeholder from "@tiptap/extension-placeholder";
+
+import { IndentExt } from "./IndentExtension";
+import { EditorToolbar, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP } from "./EditorToolbar";
+import { FloatingToolbar } from "./FloatingToolbar";
+
+// ─── Public API (forwarded ref) ───────────────────────────
 
 export interface RichEditorHandle {
-  getHTML: () => string;
-  getText: () => string;
+  getHTML:    () => string;
+  getText:    () => string;
   setContent: (html: string) => void;
-  clear: () => void;
-  focus: () => void;
+  clear:      () => void;
+  focus:      () => void;
 }
+
+// ─── Props ────────────────────────────────────────────────
 
 interface Props {
-  initialContent?: string;
-  onChange?: (html: string) => void;
-  onEscape?: () => void;
-  onCtrlEnter?: (html: string) => void;
-  disabled?: boolean;
-  autoFocus?: boolean;
+  onChange?:     (html: string) => void;
+  onEscape?:     () => void;
+  onCtrlEnter?:  (html: string) => void;
+  disabled?:     boolean;
+  placeholder?:  string;
 }
 
+// ─── Component ───────────────────────────────────────────
+
 const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
-  { initialContent = "", onChange, onEscape, onCtrlEnter, disabled, autoFocus },
-  ref
+  { onChange, onEscape, onCtrlEnter, disabled = false, placeholder = "Start writing…" },
+  ref,
 ) {
+  const [zoom, setZoom] = useState(100);
+
+  // Stable ref so the handleKeyDown closure always calls the current editor
+  const editorRef   = useRef<ReturnType<typeof useEditor>>(null);
+  const editorAreaRef = useRef<HTMLDivElement>(null);
+  // Stable callbacks wrapped in refs so we never capture stale closures
+  const onEscapeRef     = useRef(onEscape);
+  const onCtrlEnterRef  = useRef(onCtrlEnter);
+  useEffect(() => { onEscapeRef.current    = onEscape;    }, [onEscape]);
+  useEffect(() => { onCtrlEnterRef.current = onCtrlEnter; }, [onCtrlEnter]);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false }),
-      Underline,
+      ExtUnderline,
       TaskList,
       TaskItem.configure({ nested: true }),
-      Highlight.configure({ multicolor: false }),
-      Link.configure({ openOnClick: false, HTMLAttributes: { rel: "noopener noreferrer" } }),
+      Highlight,
+      Link.configure({ openOnClick: false }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      TextStyle,
+      Color,
+      ExtTable.configure({ resizable: false }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      ExtImage.configure({ inline: false }),
+      Placeholder.configure({ placeholder }),
+      IndentExt,
     ],
-    content: initialContent,
     editable: !disabled,
-    autofocus: autoFocus ? "end" : false,
+    autofocus: false,
     editorProps: {
-      attributes: { class: "re-content", spellcheck: "false" },
+      attributes: { class: "cap-prose re-prose-overrides", spellcheck: "false" },
       handleKeyDown(_, event) {
+        const e = editorRef.current;
+
+        // Escape
         if (event.key === "Escape") {
-          onEscape?.();
+          onEscapeRef.current?.();
           return true;
         }
+
+        // Ctrl+Enter → finish / custom action
         if (event.key === "Enter" && event.ctrlKey) {
-          onCtrlEnter?.(editor?.getHTML() ?? "");
+          onCtrlEnterRef.current?.(e?.getHTML() ?? "");
           return true;
         }
+
+        // Backspace at the start of an indented block → outdent (before ProseMirror baseKeymap)
+        if (event.key === "Backspace" && e) {
+          const { state } = e;
+          const { $from, empty } = state.selection;
+          if (empty && $from.parentOffset === 0) {
+            const parent = $from.parent;
+            if (parent.type.name === "paragraph" || parent.type.name === "heading") {
+              const indent = ((parent.attrs.indent as number) ?? 0);
+              if (indent > 0) {
+                event.preventDefault();
+                const nodePos = $from.before($from.depth);
+                e.view.dispatch(
+                  state.tr.setNodeMarkup(nodePos, undefined, { ...parent.attrs, indent: indent - 1 })
+                );
+                return true;
+              }
+            }
+          }
+        }
+
+        // Undo: Ctrl+Z / Cmd+Z
+        if (event.key === "z" && !event.shiftKey && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          e?.chain().focus().undo().run();
+          return true;
+        }
+
+        // Redo: Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y
+        if (
+          (event.key === "z" && event.shiftKey && (event.ctrlKey || event.metaKey)) ||
+          (event.key === "y" && event.ctrlKey && !event.shiftKey)
+        ) {
+          event.preventDefault();
+          e?.chain().focus().redo().run();
+          return true;
+        }
+
+        // Ctrl+K → link dialog
+        if (event.key === "k" && event.ctrlKey && !event.shiftKey) {
+          event.preventDefault();
+          if (!e) return true;
+          const prev = (e.getAttributes("link") as { href?: string }).href ?? "";
+          const url = window.prompt("URL", prev);
+          if (url !== null) {
+            if (url === "") e.chain().focus().unsetLink().run();
+            else e.chain().focus().setLink({ href: url }).run();
+          }
+          return true;
+        }
+
+        // Ctrl+Shift+V → paste plain text
+        if (event.key === "v" && event.ctrlKey && event.shiftKey) {
+          event.preventDefault();
+          navigator.clipboard.readText()
+            .then((text) => e?.commands.insertContent(text))
+            .catch(() => {});
+          return true;
+        }
+
         return false;
       },
     },
-    onUpdate({ editor }) {
-      onChange?.(editor.getHTML());
+    onUpdate({ editor: e }) {
+      onChange?.(e.getHTML());
     },
   });
 
-  useImperativeHandle(ref, () => ({
-    getHTML: () => editor?.getHTML() ?? "",
-    getText: () => editor?.getText() ?? "",
-    setContent: (html) => editor?.commands.setContent(html),
-    clear: () => editor?.commands.clearContent(true),
-    focus: () => editor?.commands.focus("end"),
-  }));
+  // Keep the stable ref current
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
-  // Keep editable in sync with disabled prop
+  // Keep editable in sync with the disabled prop
   useEffect(() => {
     editor?.setEditable(!disabled);
   }, [editor, disabled]);
 
-  if (!editor) return null;
+  // Ctrl+Wheel → zoom editor text (not entire UI)
+  useEffect(() => {
+    const el = editorAreaRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((prev) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP))));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
-  const setLink = () => {
-    const prev = editor.getAttributes("link").href ?? "";
-    const url = window.prompt("URL", prev);
-    if (url === null) return;
-    if (url === "") {
-      editor.chain().focus().unsetLink().run();
-    } else {
-      editor.chain().focus().setLink({ href: url }).run();
-    }
-  };
+  // ── Forwarded handle ──────────────────────────────────────
+  useImperativeHandle(ref, () => ({
+    getHTML:    () => editor?.getHTML() ?? "",
+    getText:    () => editor?.getText() ?? "",
+    setContent: (html) => { editor?.commands.setContent(html); },
+    clear:      () => { editor?.commands.clearContent(true); },
+    focus:      () => { editor?.commands.focus("end"); },
+  }));
+
+  if (!editor) return null;
 
   return (
     <div className={`re-wrap${disabled ? " re-wrap--disabled" : ""}`}>
       {!disabled && (
-        <div className="re-toolbar">
-          <ToolBtn
-            active={editor.isActive("bold")}
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            title="Bold (Ctrl+B)"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 2h4.5a3.5 3.5 0 0 1 2.2 6.18A3.5 3.5 0 0 1 8.5 14H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Zm1 5.5h3.5a1.5 1.5 0 0 0 0-3H5v3Zm0 4h3.5a1.5 1.5 0 0 0 0-3H5v3Z"/></svg>
-          </ToolBtn>
-          <ToolBtn
-            active={editor.isActive("italic")}
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            title="Italic (Ctrl+I)"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6 2h5v2H9.06L7.94 12H10v2H5v-2h1.94L8.06 4H6V2Z"/></svg>
-          </ToolBtn>
-          <ToolBtn
-            active={editor.isActive("underline")}
-            onClick={() => editor.chain().focus().toggleUnderline().run()}
-            title="Underline (Ctrl+U)"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 2v5a4 4 0 0 0 8 0V2h-2v5a2 2 0 0 1-4 0V2H4Zm-1 11h10v1H3v-1Z"/></svg>
-          </ToolBtn>
-
-          <div className="re-sep" />
-
-          <ToolBtn
-            active={editor.isActive("bulletList")}
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            title="Bullet list"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><circle cx="2.5" cy="4.5" r="1.5"/><rect x="5" y="4" width="9" height="1"/><circle cx="2.5" cy="8.5" r="1.5"/><rect x="5" y="8" width="9" height="1"/><circle cx="2.5" cy="12.5" r="1.5"/><rect x="5" y="12" width="9" height="1"/></svg>
-          </ToolBtn>
-          <ToolBtn
-            active={editor.isActive("orderedList")}
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            title="Numbered list"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><text x="1" y="5.5" fontSize="5" fontFamily="monospace">1.</text><rect x="5" y="4" width="9" height="1"/><text x="1" y="9.5" fontSize="5" fontFamily="monospace">2.</text><rect x="5" y="8" width="9" height="1"/><text x="1" y="13.5" fontSize="5" fontFamily="monospace">3.</text><rect x="5" y="12" width="9" height="1"/></svg>
-          </ToolBtn>
-          <ToolBtn
-            active={editor.isActive("taskList")}
-            onClick={() => editor.chain().focus().toggleTaskList().run()}
-            title="Checklist"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="1" y="3" width="4" height="4" rx="0.75" stroke="currentColor" strokeWidth="1" fill="none"/><path d="M2 5l1.2 1.2L5 3.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round"/><rect x="7" y="4" width="7" height="1" rx="0.5"/><rect x="1" y="9" width="4" height="4" rx="0.75" stroke="currentColor" strokeWidth="1" fill="none"/><rect x="7" y="10" width="7" height="1" rx="0.5"/></svg>
-          </ToolBtn>
-
-          <div className="re-sep" />
-
-          <ToolBtn
-            active={editor.isActive("highlight")}
-            onClick={() => editor.chain().focus().toggleHighlight().run()}
-            title="Highlight"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M9.5 2 13 5.5 6.5 12H3V8.5L9.5 2Z" opacity="0.7"/><path d="M9.5 2 13 5.5l-1.5 1.5L8.5 5.5 9.5 2Z" opacity="1"/><rect x="1" y="13.5" width="14" height="1" rx="0.5"/></svg>
-          </ToolBtn>
-          <ToolBtn
-            active={editor.isActive("link")}
-            onClick={setLink}
-            title="Link"
-          >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6.5 9.5a3.5 3.5 0 0 0 4.95 0l1.5-1.5a3.5 3.5 0 0 0-4.95-4.95L6.86 4.18a.5.5 0 1 0 .71.71l1.14-1.13a2.5 2.5 0 1 1 3.53 3.53l-1.5 1.5a2.5 2.5 0 0 1-3.53 0 .5.5 0 0 0-.71.71ZM9.5 6.5a3.5 3.5 0 0 0-4.95 0L3.05 8a3.5 3.5 0 0 0 4.95 4.95l1.14-1.14a.5.5 0 1 0-.71-.71L7.29 12.24a2.5 2.5 0 1 1-3.53-3.53l1.5-1.5a2.5 2.5 0 0 1 3.53 0 .5.5 0 0 0 .71-.71Z"/></svg>
-          </ToolBtn>
-        </div>
+        <EditorToolbar editor={editor} zoom={zoom} onZoomChange={setZoom} />
       )}
-      <EditorContent editor={editor} className="re-editor-wrap" />
+      <div
+        ref={editorAreaRef}
+        className="re-editor-area"
+        style={{ "--editor-zoom": String(zoom / 100) } as React.CSSProperties}
+      >
+        <EditorContent editor={editor} className="re-editor-mount" />
+      </div>
+      <FloatingToolbar editor={editor} />
     </div>
   );
 });
-
-function ToolBtn({
-  children,
-  active,
-  onClick,
-  title,
-}: {
-  children: React.ReactNode;
-  active?: boolean;
-  onClick: () => void;
-  title?: string;
-}) {
-  return (
-    <button
-      className={`re-btn${active ? " re-btn--active" : ""}`}
-      onMouseDown={(e) => {
-        e.preventDefault(); // keep editor focus
-        onClick();
-      }}
-      title={title}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
 
 export default RichEditor;

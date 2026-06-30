@@ -1,4 +1,10 @@
-/* ── Wrapper ─────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════
+   RichEditor — light theme, matches Quick Capture.
+   Typography reuses .cap-prose from Capture.css (globally
+   available in the shared bundle).
+   ════════════════════════════════════════════════════════ */
+
+/* ── Wrapper ── */
 
 .re-wrap {
   display: flex;
@@ -6,211 +12,46 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  background: var(--cap-bg);
 }
 
 .re-wrap--disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   pointer-events: none;
 }
 
-/* ── Toolbar ─────────────────────────────────────────── */
+/* ── Editor area ── */
 
-.re-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  padding: 5px 8px;
-  background: #111113;
-  border-bottom: 1px solid #1f1f23;
-  flex-shrink: 0;
-}
-
-.re-sep {
-  width: 1px;
-  height: 16px;
-  background: #2a2a30;
-  margin: 0 4px;
-  flex-shrink: 0;
-}
-
-.re-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: #6b7280;
-  cursor: pointer;
-  transition: background 80ms, color 80ms;
-  flex-shrink: 0;
-}
-
-.re-btn:hover {
-  background: #1e1e24;
-  color: #d1d5db;
-}
-
-.re-btn--active {
-  background: #2a2040;
-  color: #a78bfa;
-}
-
-.re-btn--active:hover {
-  background: #32284d;
-  color: #c4b5fd;
-}
-
-/* ── Editor area ─────────────────────────────────────── */
-
-.re-editor-wrap {
+.re-editor-area {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+}
+
+.re-editor-area::-webkit-scrollbar { width: 5px; }
+.re-editor-area::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+}
+
+/* ProseMirror mount wrapper */
+.re-editor-mount {
   display: flex;
   flex-direction: column;
-}
-
-.re-editor-wrap::-webkit-scrollbar {
-  width: 4px;
-}
-
-.re-editor-wrap::-webkit-scrollbar-thumb {
-  background: #2a2a30;
-  border-radius: 2px;
-}
-
-/* The ProseMirror contenteditable div */
-.re-content {
-  flex: 1;
-  outline: none;
   min-height: 100%;
 }
 
-/* ── Typography inside editor ────────────────────────── */
+/* Apply the Capture-style zoom so Ctrl+Wheel and A−/A+ work */
+.re-editor-area .cap-prose {
+  font-size: calc(17px * var(--editor-zoom, 1));
+  padding: 36px 56px 40px;
+}
 
-.re-content p {
-  margin: 0 0 0.3em;
+/* Small overrides so the prose looks at home in the Database panel */
+.re-prose-overrides {
+  caret-color: var(--cap-purple);
+  color: var(--cap-text);
   line-height: 1.75;
-}
-
-.re-content p:last-child {
-  margin-bottom: 0;
-}
-
-.re-content strong {
-  font-weight: 700;
-  color: inherit;
-}
-
-.re-content em {
-  font-style: italic;
-}
-
-.re-content u {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.re-content mark {
-  background: #7c3aed40;
-  color: #c4b5fd;
-  border-radius: 2px;
-  padding: 0 2px;
-}
-
-.re-content a {
-  color: #818cf8;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.re-content a:hover {
-  color: #a5b4fc;
-}
-
-/* Lists */
-
-.re-content ul,
-.re-content ol {
-  padding-left: 1.4em;
-  margin: 0.2em 0 0.4em;
-}
-
-.re-content li {
-  margin: 0.1em 0;
-  line-height: 1.65;
-}
-
-.re-content li p {
-  margin: 0;
-}
-
-/* Task list */
-
-.re-content ul[data-type="taskList"] {
-  list-style: none;
-  padding-left: 0.2em;
-}
-
-.re-content ul[data-type="taskList"] li {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-}
-
-.re-content ul[data-type="taskList"] li > label {
-  flex-shrink: 0;
-  margin-top: 3px;
-  cursor: pointer;
-}
-
-.re-content ul[data-type="taskList"] li > label input[type="checkbox"] {
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid #4b5563;
-  border-radius: 3px;
-  background: transparent;
-  cursor: pointer;
-  position: relative;
-}
-
-.re-content ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
-  background: #7c3aed;
-  border-color: #7c3aed;
-}
-
-.re-content ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 0px;
-  width: 5px;
-  height: 8px;
-  border: 2px solid #fff;
-  border-top: none;
-  border-left: none;
-  transform: rotate(45deg);
-}
-
-.re-content ul[data-type="taskList"] li > div {
-  flex: 1;
-}
-
-.re-content ul[data-type="taskList"] li[data-checked="true"] > div {
-  color: #4b5563;
-  text-decoration: line-through;
-}
-
-/* Placeholder */
-
-.re-content p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: #374151;
-  pointer-events: none;
-  float: left;
-  height: 0;
 }

@@ -1,0 +1,154 @@
+/* ════════════════════════════════════════════════════════
+   EditorToolbar — shared formatting toolbar styles.
+   Used by Quick Capture (via Capture.tsx) and the Notes
+   Database (via RichEditor.tsx → EditorToolbar.tsx).
+   ════════════════════════════════════════════════════════ */
+
+/* ── Toolbar container (shared by Capture + Database) ── */
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 1px;
+  padding: 5px 8px;
+  background: var(--cap-bg);
+  border-bottom: 1px solid var(--cap-border);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* ── Separator ── */
+
+.tbr-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(0, 0, 0, 0.1);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ── Toolbar button ── */
+
+.tbr-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 36px;
+  border-radius: 6px;
+  color: #5b6472;
+  transition: background 80ms, color 80ms;
+  flex-shrink: 0;
+  position: relative;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--cap-font);
+}
+
+.tbr-btn svg {
+  flex-shrink: 0;
+  stroke-width: 1.75;
+}
+
+.tbr-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #111827;
+}
+
+.tbr-btn:active:not(.tbr-btn--dim) {
+  background: rgba(0, 0, 0, 0.1);
+  transform: scale(0.94);
+}
+
+.tbr-btn--active {
+  background: var(--cap-purple-tint);
+  color: var(--cap-purple);
+}
+
+.tbr-btn--active:hover {
+  background: var(--cap-purple-tint2);
+  color: var(--cap-purple-dark);
+}
+
+.tbr-btn--dim {
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+/* ── Font size A− / % / A+ control ── */
+
+.tbr-zoom-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.tbr-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: #5b6472;
+  font-family: var(--cap-font);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 80ms, color 80ms;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+}
+
+.tbr-zoom-btn--sm { font-size: 11px; }
+.tbr-zoom-btn--lg { font-size: 13px; }
+
+.tbr-zoom-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #111827;
+}
+
+.tbr-zoom-btn:active {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.tbr-zoom-pct {
+  font-size: 11px;
+  color: #6b7280;
+  min-width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Popover wrapper ── */
+
+.tbr-pop-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ── Color icon (Palette glyph + coloured underline bar) ── */
+
+.tbr-color-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 0;
+}
+
+.tbr-color-icon-bar {
+  display: block;
+  width: 14px;
+  height: 3px;
+  border-radius: 1.5px;
+  flex-shrink: 0;
+}
