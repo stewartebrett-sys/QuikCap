@@ -29,7 +29,9 @@
         "height": 750,
         "resizable": true,
         "center": true,
-        "visible": true
+        "visible": true,
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {

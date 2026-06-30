@@ -1,6 +1,7 @@
 import "./Database.css";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Pin, Calendar } from "lucide-react";
 import RichEditor, { RichEditorHandle } from "./components/RichEditor";
 
@@ -60,6 +61,7 @@ function smartDate(ms: number): string {
 const AUTOSAVE_MS = 500;
 
 function Database() {
+  const appWindow = getCurrentWindow();
   const [notes, setNotes] = useState<Note[]>([]);
   const [draft, setDraft] = useState("");
   // undefined = nothing selected; null = draft selected; string = saved note id
@@ -165,17 +167,30 @@ function Database() {
     <div className="db">
 
       {/* ── Top nav ── */}
-      <nav className="db-topnav">
-        <div className="db-logo">
+      <nav className="db-topnav" data-tauri-drag-region>
+        <div className="db-logo" data-tauri-no-drag>
           <svg className="db-logo-icon" width="15" height="15" viewBox="0 0 16 16" fill="none">
             <path d="M9 1L2 9.5H7.5L7 15L14 6.5H8.5L9 1Z" fill="#7c3aed" strokeLinejoin="round" />
           </svg>
           <span className="db-logo-text">QuikCap</span>
         </div>
 
-        <div className="db-tabs">
+        <div className="db-tabs" data-tauri-no-drag>
           <button className="db-tab db-tab--active">Saved Notes</button>
           <button className="db-tab db-tab--inactive">Settings</button>
+        </div>
+
+        {/* Window controls — mirrors Quick Capture */}
+        <div className="cap-winctrl-group" data-tauri-no-drag style={{ marginLeft: "auto" }}>
+          <button className="cap-winctrl cap-winctrl--min" onClick={() => appWindow.minimize()} title="Minimize">
+            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" rx="0.5" fill="currentColor" /></svg>
+          </button>
+          <button className="cap-winctrl cap-winctrl--max" onClick={() => appWindow.toggleMaximize()} title="Maximize">
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1" /></svg>
+          </button>
+          <button className="cap-winctrl cap-winctrl--close" onClick={() => appWindow.hide()} title="Close">
+            <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+          </button>
         </div>
       </nav>
 
