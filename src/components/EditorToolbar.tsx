@@ -249,24 +249,14 @@ export function EditorToolbar({ editor, className = "editor-toolbar" }: EditorTo
       >
         {openMenu === "bullets" && (
           <div className="tbr-dropdown">
-            {BULLET_OPTIONS.map(({ symbol, label, supported, action }) => (
+            {BULLET_OPTIONS.filter(o => o.supported).map(({ symbol, label, action }) => (
               <button
                 key={label}
-                className={[
-                  "tbr-dropdown-item",
-                  !supported ? "tbr-dropdown-item--disabled" : "",
-                  supported && editor.isActive("bulletList") && label === "Bullet (•)" ? "tbr-dropdown-item--active" : "",
-                ].filter(Boolean).join(" ")}
-                onMouseDown={e => {
-                  e.preventDefault();
-                  if (!supported) return;
-                  action();
-                  setOpenMenu(null);
-                }}
+                className={`tbr-dropdown-item${editor.isActive("bulletList") ? " tbr-dropdown-item--active" : ""}`}
+                onMouseDown={e => { e.preventDefault(); action(); setOpenMenu(null); }}
               >
                 <span className="tbr-dropdown-symbol">{symbol}</span>
                 {label}
-                {!supported && <span className="tbr-dropdown-badge">soon</span>}
               </button>
             ))}
           </div>
@@ -284,24 +274,14 @@ export function EditorToolbar({ editor, className = "editor-toolbar" }: EditorTo
       >
         {openMenu === "numbered" && (
           <div className="tbr-dropdown">
-            {NUMBERED_OPTIONS.map(({ symbol, label, supported, action }) => (
+            {NUMBERED_OPTIONS.filter(o => o.supported).map(({ symbol, label, action }) => (
               <button
                 key={label}
-                className={[
-                  "tbr-dropdown-item",
-                  !supported ? "tbr-dropdown-item--disabled" : "",
-                  supported && editor.isActive("orderedList") && label === "1, 2, 3" ? "tbr-dropdown-item--active" : "",
-                ].filter(Boolean).join(" ")}
-                onMouseDown={e => {
-                  e.preventDefault();
-                  if (!supported) return;
-                  action();
-                  setOpenMenu(null);
-                }}
+                className={`tbr-dropdown-item${editor.isActive("orderedList") ? " tbr-dropdown-item--active" : ""}`}
+                onMouseDown={e => { e.preventDefault(); action(); setOpenMenu(null); }}
               >
                 <span className="tbr-dropdown-symbol">{symbol}</span>
                 {label}
-                {!supported && <span className="tbr-dropdown-badge">soon</span>}
               </button>
             ))}
           </div>
@@ -319,24 +299,14 @@ export function EditorToolbar({ editor, className = "editor-toolbar" }: EditorTo
       >
         {openMenu === "checklist" && (
           <div className="tbr-dropdown">
-            {CHECKLIST_OPTIONS.map(({ symbol, label, supported, action }) => (
+            {CHECKLIST_OPTIONS.filter(o => o.supported).map(({ symbol, label, action }) => (
               <button
                 key={label}
-                className={[
-                  "tbr-dropdown-item",
-                  !supported ? "tbr-dropdown-item--disabled" : "",
-                  supported && editor.isActive("taskList") ? "tbr-dropdown-item--active" : "",
-                ].filter(Boolean).join(" ")}
-                onMouseDown={e => {
-                  e.preventDefault();
-                  if (!supported) return;
-                  action();
-                  setOpenMenu(null);
-                }}
+                className={`tbr-dropdown-item${editor.isActive("taskList") ? " tbr-dropdown-item--active" : ""}`}
+                onMouseDown={e => { e.preventDefault(); action(); setOpenMenu(null); }}
               >
                 <span className="tbr-dropdown-symbol">{symbol}</span>
                 {label}
-                {!supported && <span className="tbr-dropdown-badge">soon</span>}
               </button>
             ))}
           </div>
@@ -456,7 +426,7 @@ function SplitBtn({
         aria-label={`${title} options`}
         aria-expanded={open}
       >
-        <ChevronDown size={8} strokeWidth={2.5} />
+        <ChevronDown size={10} strokeWidth={2.5} />
       </button>
 
       {/* Dropdown content */}

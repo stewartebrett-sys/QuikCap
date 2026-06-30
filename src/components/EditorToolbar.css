@@ -172,7 +172,7 @@
   border: none;
   background: none;
   cursor: pointer;
-  color: #9ca3af;
+  color: #374151;
   border-radius: 0 5px 5px 0;
   transition: background 70ms, color 70ms;
 }
@@ -180,7 +180,7 @@
 .tbr-split-arrow:hover,
 .tbr-split-arrow--hov {
   background: rgba(0, 0, 0, 0.06);
-  color: #4b5563;
+  color: #111827;
 }
 
 .tbr-split--active .tbr-split-arrow {
@@ -205,28 +205,29 @@
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
-  padding: 4px;
+  padding: 6px;
   z-index: 9020;
-  min-width: 148px;
+  min-width: 168px;
   user-select: none;
 }
 
 .tbr-dropdown-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 10px 14px;
   border: none;
   background: none;
   border-radius: 5px;
   cursor: pointer;
   font-family: var(--cap-font);
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--cap-text);
   text-align: left;
   transition: background 60ms;
   white-space: nowrap;
+  min-height: 38px;
 }
 
 .tbr-dropdown-item:hover { background: rgba(0, 0, 0, 0.05); }
@@ -236,34 +237,14 @@
   background: var(--cap-purple-tint);
 }
 
-/* Disabled items (options not yet implemented) */
-.tbr-dropdown-item--disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
-}
-
-.tbr-dropdown-item--disabled:hover { background: none; }
-
 /* Symbol glyph column in list dropdowns */
 .tbr-dropdown-symbol {
   display: inline-block;
-  width: 18px;
+  width: 20px;
   text-align: center;
-  font-size: 13px;
+  font-size: 14px;
   flex-shrink: 0;
   color: var(--cap-text-sub);
-}
-
-/* "soon" badge on disabled items */
-.tbr-dropdown-badge {
-  margin-left: auto;
-  font-size: 9.5px;
-  color: var(--cap-text-dim);
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 3px;
-  padding: 1px 5px;
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
 }
 
 /* ════════════════════════════════════════════════════════

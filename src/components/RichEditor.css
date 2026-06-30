@@ -45,7 +45,7 @@
 
 .re-editor-area .cap-prose {
   font-size: calc(16px * var(--editor-zoom, 1));
-  padding: 48px 56px 64px;
+  padding: 32px 56px 64px;
   max-width: 960px;
 }
 
