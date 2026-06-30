@@ -1,6 +1,7 @@
 import "./Database.css";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Pin, Calendar } from "lucide-react";
 import RichEditor, { RichEditorHandle } from "./components/RichEditor";
 
 interface Note {
@@ -8,6 +9,9 @@ interface Note {
   text: string;
   created_at: number;
   updated_at: number;
+  pinned: boolean;
+  follow_up_date?: string;
+  status: string;
 }
 
 function htmlToPlain(html: string): string {
@@ -28,24 +32,34 @@ function firstLine(html: string): string {
   return plain.split("\n").find((l) => l.trim()) ?? "Untitled";
 }
 
-function secondLine(html: string): string {
-  const lines = htmlToPlain(html).split("\n").filter((l) => l.trim());
-  return lines[1] ?? "";
+function previewText(html: string): string {
+  const plain = htmlToPlain(html);
+  const lines = plain.split("\n").filter((l) => l.trim());
+  return lines.slice(1).join(" ").trim();
 }
 
-function formatDate(ms: number): string {
+function smartDate(ms: number): string {
   const date = new Date(ms);
   const now = new Date();
+
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
 
-  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+  if (diffDays < 7) {
+    return date.toLocaleDateString([], { weekday: "short" });
+  }
 
-  if (date.toDateString() === now.toDateString()) return `Today at ${time}`;
-  if (date.toDateString() === yesterday.toDateString()) return `Yesterday at ${time}`;
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
 
-  const month = date.toLocaleString("default", { month: "short" });
-  return `${month} ${date.getDate()} at ${time}`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
 const AUTOSAVE_MS = 500;
@@ -129,9 +143,6 @@ function Database() {
       if (selectedId === null) {
         invoke("save_draft", { text: html }).catch(console.error);
         setDraft(html);
-        setNotes((prev) =>
-          prev.map((n) => (n.id === "draft" ? { ...n, text: html, updated_at: Date.now() } : n))
-        );
       } else if (typeof selectedId === "string") {
         invoke("update_note", { id: selectedId, text: html }).catch(console.error);
         setNotes((prev) =>
@@ -187,31 +198,50 @@ function Database() {
           </div>
 
           <div className="db-cards">
+
+            {/* Draft (always first) */}
             {showDraft && (
               <button
-                className={`db-card db-card-active${selectedId === null ? " db-card-selected" : ""}`}
+                className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
                 onClick={() => selectNote(null)}
               >
-                <div className="db-card-top">
+                <div className="db-card-header">
                   <span className="db-card-title">{firstLine(draft)}</span>
-                  <span className="db-active-dot" />
+                  <div className="db-card-icons">
+                    <span className="db-active-dot" title="Active in Capture" />
+                  </div>
                 </div>
-                <div className="db-card-preview">{secondLine(draft)}</div>
-                <div className="db-card-date">Active</div>
+                {previewText(draft) && (
+                  <div className="db-card-preview">{previewText(draft)}</div>
+                )}
+                <div className="db-card-footer">
+                  <span className="db-card-date">Active</span>
+                </div>
               </button>
             )}
 
+            {/* Saved notes */}
             {filteredNotes.map((note) => (
               <button
                 key={note.id}
                 className={`db-card${selectedId === note.id ? " db-card-selected" : ""}`}
                 onClick={() => selectNote(note.id)}
               >
-                <div className="db-card-top">
+                <div className="db-card-header">
                   <span className="db-card-title">{firstLine(note.text)}</span>
+                  {(note.pinned || note.follow_up_date) && (
+                    <div className="db-card-icons">
+                      {note.pinned && <Pin size={10} strokeWidth={2.5} className="db-icon-pin" />}
+                      {note.follow_up_date && <Calendar size={10} strokeWidth={2.5} className="db-icon-cal" />}
+                    </div>
+                  )}
                 </div>
-                <div className="db-card-preview">{secondLine(note.text)}</div>
-                <div className="db-card-date">{formatDate(note.updated_at)}</div>
+                {previewText(note.text) && (
+                  <div className="db-card-preview">{previewText(note.text)}</div>
+                )}
+                <div className="db-card-footer">
+                  <span className="db-card-date">{smartDate(note.updated_at)}</span>
+                </div>
               </button>
             ))}
 
