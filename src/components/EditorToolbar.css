@@ -236,6 +236,36 @@
   background: var(--cap-purple-tint);
 }
 
+/* Disabled items (options not yet implemented) */
+.tbr-dropdown-item--disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.tbr-dropdown-item--disabled:hover { background: none; }
+
+/* Symbol glyph column in list dropdowns */
+.tbr-dropdown-symbol {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  font-size: 13px;
+  flex-shrink: 0;
+  color: var(--cap-text-sub);
+}
+
+/* "soon" badge on disabled items */
+.tbr-dropdown-badge {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: var(--cap-text-dim);
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  padding: 1px 5px;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
 /* ════════════════════════════════════════════════════════
    COLOR ICONS
    ════════════════════════════════════════════════════════ */

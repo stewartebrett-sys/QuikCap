@@ -1,12 +1,7 @@
 /* ════════════════════════════════════════════════════════
-   ColorPickerPopover — shared styles
-   Used by both the main toolbar and floating toolbar.
-
-   Positioned absolute so the caller supplies a `position:
-   relative` wrapper. z-index: 9020 ensures the picker
-   appears above the floating toolbar (z-index: 9000)
-   when opened from the main toolbar, and above all other
-   content inside the floating toolbar's stacking context.
+   ColorPickerPopover — shared styles.
+   Positioned absolute; caller supplies position:relative wrapper.
+   z-index: 9020 keeps it above FloatingToolbar (9000).
    ════════════════════════════════════════════════════════ */
 
 .color-pop {
@@ -18,34 +13,35 @@
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 10px;
   box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.13),
     0 2px 6px  rgba(0, 0, 0, 0.07);
   padding: 10px;
   z-index: 9020;
-  width: 126px;
+  /* 5 columns × 20px swatch + 4 gaps × 4px + 20px padding = 156px */
+  width: 156px;
   user-select: none;
 }
 
-/* 4-column grid — 7 swatches fill two rows (4 + 3) */
+/* 5-column grid for 20 text colors (4 rows) or 15 highlight colors (3 rows) */
 .color-pop-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
   margin-bottom: 8px;
 }
 
 .color-swatch {
-  width: 21px;
-  height: 21px;
-  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
   border: 2px solid transparent;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
-  transition: transform 80ms, border-color 80ms;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+  transition: transform 70ms, border-color 70ms;
 }
 
-.color-swatch:hover { transform: scale(1.15); }
-.color-swatch--on   { border-color: var(--cap-purple); }
+.color-swatch:hover  { transform: scale(1.18); }
+.color-swatch--on    { border-color: var(--cap-purple); }
 
 .color-pop-reset {
   width: 100%;
@@ -60,4 +56,5 @@
   text-align: center;
   transition: color 80ms;
 }
+
 .color-pop-reset:hover { color: var(--cap-text); }

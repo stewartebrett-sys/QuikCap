@@ -42,6 +42,46 @@ const FONT_SIZES = ["8","9","10","11","12","14","16","18","20","24","28","36","4
 type OpenMenu = "color" | "highlight" | "bullets" | "numbered" | "checklist" | "align" | null;
 type Align    = "left" | "center" | "right";
 
+// ─── List option definitions ──────────────────────────────
+// supported:true = wired to Tiptap; supported:false = UI shown, action disabled.
+// action is populated inside the component via a builder function.
+
+interface ListOption {
+  symbol:    string;
+  label:     string;
+  supported: boolean;
+  action:    () => void;
+}
+
+function makeBulletOptions(editor: EditorToolbarProps["editor"]): ListOption[] {
+  return [
+    { symbol: "•", label: "Bullet (•)",  supported: true,  action: () => editor.chain().focus().toggleBulletList().run() },
+    { symbol: "○", label: "Circle (○)",  supported: false, action: () => {} },
+    { symbol: "■", label: "Square (■)",  supported: false, action: () => {} },
+    { symbol: "–", label: "Dash (–)",    supported: false, action: () => {} },
+    { symbol: "✓", label: "Check (✓)", supported: false, action: () => {} },
+  ];
+}
+
+function makeNumberedOptions(editor: EditorToolbarProps["editor"]): ListOption[] {
+  return [
+    { symbol: "1.", label: "1, 2, 3",    supported: true,  action: () => editor.chain().focus().toggleOrderedList().run() },
+    { symbol: "A.", label: "A, B, C",    supported: false, action: () => {} },
+    { symbol: "a.", label: "a, b, c",    supported: false, action: () => {} },
+    { symbol: "I.", label: "I, II, III", supported: false, action: () => {} },
+    { symbol: "i.", label: "i, ii, iii", supported: false, action: () => {} },
+  ];
+}
+
+function makeChecklistOptions(editor: EditorToolbarProps["editor"]): ListOption[] {
+  return [
+    { symbol: "☐", label: "Checklist",      supported: true,  action: () => editor.chain().focus().toggleTaskList().run() },
+    { symbol: "☑", label: "Checked boxes",  supported: false, action: () => {} },
+    { symbol: "□", label: "Box checklist",  supported: false, action: () => {} },
+    { symbol: "✓", label: "Check marks",   supported: false, action: () => {} },
+  ];
+}
+
 // ─── Component ───────────────────────────────────────────
 
 export interface EditorToolbarProps {
@@ -81,6 +121,10 @@ export function EditorToolbar({ editor, className = "editor-toolbar" }: EditorTo
   const AlignIcon = lastAlign === "center" ? AlignCenter
                   : lastAlign === "right"  ? AlignRight
                   : AlignLeft;
+
+  const BULLET_OPTIONS    = makeBulletOptions(editor);
+  const NUMBERED_OPTIONS  = makeNumberedOptions(editor);
+  const CHECKLIST_OPTIONS = makeChecklistOptions(editor);
 
   return (
     <div className={className} role="toolbar" aria-label="Formatting options" ref={toolbarRef}>
@@ -205,10 +249,26 @@ export function EditorToolbar({ editor, className = "editor-toolbar" }: EditorTo
       >
         {openMenu === "bullets" && (
           <div className="tbr-dropdown">
-            <button className={`tbr-dropdown-item${editor.isActive("bulletList") ? " tbr-dropdown-item--active" : ""}`}
-              onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleBulletList().run(); setOpenMenu(null); }}>
-              <List size={15} strokeWidth={2} /> Bullet list
-            </button>
+            {BULLET_OPTIONS.map(({ symbol, label, supported, action }) => (
+              <button
+                key={label}
+                className={[
+                  "tbr-dropdown-item",
+                  !supported ? "tbr-dropdown-item--disabled" : "",
+                  supported && editor.isActive("bulletList") && label === "Bullet (•)" ? "tbr-dropdown-item--active" : "",
+                ].filter(Boolean).join(" ")}
+                onMouseDown={e => {
+                  e.preventDefault();
+                  if (!supported) return;
+                  action();
+                  setOpenMenu(null);
+                }}
+              >
+                <span className="tbr-dropdown-symbol">{symbol}</span>
+                {label}
+                {!supported && <span className="tbr-dropdown-badge">soon</span>}
+              </button>
+            ))}
           </div>
         )}
       </SplitBtn>
@@ -224,10 +284,26 @@ export function EditorToolbar({ editor, className = "editor-toolbar" }: EditorTo
       >
         {openMenu === "numbered" && (
           <div className="tbr-dropdown">
-            <button className={`tbr-dropdown-item${editor.isActive("orderedList") ? " tbr-dropdown-item--active" : ""}`}
-              onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run(); setOpenMenu(null); }}>
-              <ListOrdered size={15} strokeWidth={2} /> Numbered list
-            </button>
+            {NUMBERED_OPTIONS.map(({ symbol, label, supported, action }) => (
+              <button
+                key={label}
+                className={[
+                  "tbr-dropdown-item",
+                  !supported ? "tbr-dropdown-item--disabled" : "",
+                  supported && editor.isActive("orderedList") && label === "1, 2, 3" ? "tbr-dropdown-item--active" : "",
+                ].filter(Boolean).join(" ")}
+                onMouseDown={e => {
+                  e.preventDefault();
+                  if (!supported) return;
+                  action();
+                  setOpenMenu(null);
+                }}
+              >
+                <span className="tbr-dropdown-symbol">{symbol}</span>
+                {label}
+                {!supported && <span className="tbr-dropdown-badge">soon</span>}
+              </button>
+            ))}
           </div>
         )}
       </SplitBtn>
@@ -243,10 +319,26 @@ export function EditorToolbar({ editor, className = "editor-toolbar" }: EditorTo
       >
         {openMenu === "checklist" && (
           <div className="tbr-dropdown">
-            <button className={`tbr-dropdown-item${editor.isActive("taskList") ? " tbr-dropdown-item--active" : ""}`}
-              onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleTaskList().run(); setOpenMenu(null); }}>
-              <ListChecks size={15} strokeWidth={2} /> Checklist
-            </button>
+            {CHECKLIST_OPTIONS.map(({ symbol, label, supported, action }) => (
+              <button
+                key={label}
+                className={[
+                  "tbr-dropdown-item",
+                  !supported ? "tbr-dropdown-item--disabled" : "",
+                  supported && editor.isActive("taskList") ? "tbr-dropdown-item--active" : "",
+                ].filter(Boolean).join(" ")}
+                onMouseDown={e => {
+                  e.preventDefault();
+                  if (!supported) return;
+                  action();
+                  setOpenMenu(null);
+                }}
+              >
+                <span className="tbr-dropdown-symbol">{symbol}</span>
+                {label}
+                {!supported && <span className="tbr-dropdown-badge">soon</span>}
+              </button>
+            ))}
           </div>
         )}
       </SplitBtn>

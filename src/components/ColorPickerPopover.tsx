@@ -1,40 +1,64 @@
 /**
- * ColorPickerPopover — shared color picker used by both the main
- * formatting toolbar and the floating selection toolbar.
- *
- * Supports two modes:
- *   "text"      → sets/unsets text color via the Color extension
- *   "highlight" → sets/unsets highlight color (requires multicolor: true)
- *
- * Renders as `position: absolute` so the CALLER wraps it in a
- * `position: relative` container.
+ * ColorPickerPopover — shared color picker.
+ * "text" mode → sets/unsets text color via the Color extension.
+ * "highlight" mode → sets/unsets highlight (requires multicolor: true).
  */
 
 import "./ColorPickerPopover.css";
 import type { Editor } from "@tiptap/react";
 
-// ─── Text color palette ────────────────────────────────────
+// ─── Text color palette (20 colors, 5-column grid) ─────────
+// Matches Office's standard color palette: neutrals + warm + cool + other.
 
 export const PRESET_COLORS = [
-  { hex: "#000000", label: "Black"  },
-  { hex: "#6b7280", label: "Gray"   },
-  { hex: "#dc2626", label: "Red"    },
-  { hex: "#ea580c", label: "Orange" },
-  { hex: "#16a34a", label: "Green"  },
-  { hex: "#2563eb", label: "Blue"   },
-  { hex: "#7c3aed", label: "Purple" },
+  // Row 1 — Neutrals
+  { hex: "#000000", label: "Black"      },
+  { hex: "#404040", label: "Dark Gray"  },
+  { hex: "#808080", label: "Gray"       },
+  { hex: "#bfbfbf", label: "Light Gray" },
+  { hex: "#ffffff", label: "White"      },
+  // Row 2 — Warm
+  { hex: "#c00000", label: "Dark Red"   },
+  { hex: "#ff0000", label: "Red"        },
+  { hex: "#ff6600", label: "Orange"     },
+  { hex: "#ffc000", label: "Gold"       },
+  { hex: "#ffff00", label: "Yellow"     },
+  // Row 3 — Cool
+  { hex: "#006100", label: "Dark Green" },
+  { hex: "#00b050", label: "Green"      },
+  { hex: "#008080", label: "Teal"       },
+  { hex: "#0070c0", label: "Blue"       },
+  { hex: "#002060", label: "Dark Blue"  },
+  // Row 4 — Other
+  { hex: "#7030a0", label: "Purple"     },
+  { hex: "#e6007e", label: "Pink"       },
+  { hex: "#4472c4", label: "Cornflower" },
+  { hex: "#843c0c", label: "Brown"      },
+  { hex: "#c9211e", label: "Crimson"    },
 ];
 
-// ─── Highlight palette (light background tones) ────────────
+// ─── Highlight palette (15 colors, 5-column grid) ──────────
+// Microsoft Word's exact highlight color palette.
 
 export const HIGHLIGHT_COLORS = [
-  { hex: "#fef08a", label: "Yellow"  },
-  { hex: "#bbf7d0", label: "Green"   },
-  { hex: "#bfdbfe", label: "Blue"    },
-  { hex: "#fecaca", label: "Red"     },
-  { hex: "#e9d5ff", label: "Purple"  },
-  { hex: "#fed7aa", label: "Orange"  },
-  { hex: "#f1f5f9", label: "Gray"    },
+  // Row 1
+  { hex: "#ffff00", label: "Yellow"      },
+  { hex: "#00ff00", label: "Bright Green"},
+  { hex: "#00ffff", label: "Turquoise"   },
+  { hex: "#ff00ff", label: "Pink"        },
+  { hex: "#0000ff", label: "Blue"        },
+  // Row 2
+  { hex: "#ff0000", label: "Red"         },
+  { hex: "#000080", label: "Dark Blue"   },
+  { hex: "#008080", label: "Teal"        },
+  { hex: "#008000", label: "Green"       },
+  { hex: "#800080", label: "Purple"      },
+  // Row 3
+  { hex: "#800000", label: "Dark Red"    },
+  { hex: "#808000", label: "Dark Yellow" },
+  { hex: "#808080", label: "Gray 50%"    },
+  { hex: "#c0c0c0", label: "Gray 25%"    },
+  { hex: "#000000", label: "Black"       },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -72,11 +96,8 @@ export function ColorPickerPopover({ editor, onClose, mode = "text", onSelect }:
   };
 
   const reset = () => {
-    if (isHighlight) {
-      editor.chain().focus().unsetHighlight().run();
-    } else {
-      editor.chain().focus().unsetColor().run();
-    }
+    if (isHighlight) editor.chain().focus().unsetHighlight().run();
+    else             editor.chain().focus().unsetColor().run();
     onClose();
   };
 
