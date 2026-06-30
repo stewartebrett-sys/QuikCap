@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Pin, Calendar } from "lucide-react";
+import type { Editor } from "@tiptap/react";
 import RichEditor, { RichEditorHandle } from "./components/RichEditor";
+import { EditorToolbar } from "./components/EditorToolbar";
 
 interface Note {
   id: string;
@@ -32,7 +34,6 @@ function firstLine(html: string): string {
   const plain = htmlToPlain(html);
   return plain.split("\n").find((l) => l.trim()) ?? "Untitled";
 }
-
 
 function smartDate(ms: number): string {
   const date = new Date(ms);
@@ -67,6 +68,10 @@ function Database() {
   // undefined = nothing selected; null = draft selected; string = saved note id
   const [selectedId, setSelectedId] = useState<string | null | undefined>(undefined);
   const [search, setSearch] = useState("");
+  // Editor instance + zoom exposed from RichEditor for the detached toolbar
+  const [dbEditor, setDbEditor] = useState<Editor | null>(null);
+  const [dbZoom, setDbZoom] = useState(100);
+
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const editorRef = useRef<RichEditorHandle>(null);
   // Track what's in the editor so we can flush before switching
@@ -157,11 +162,20 @@ function Database() {
     }, AUTOSAVE_MS);
   };
 
+  // Toolbar zoom controlled from outside RichEditor;
+  // setZoom on the handle only updates the internal zoom variable (no callback loop)
+  const handleZoomChange = (z: number) => {
+    setDbZoom(z);
+    editorRef.current?.setZoom(z);
+  };
+
   const query = search.toLowerCase();
   const showDraft = draft.trim() && (!query || htmlToPlain(draft).toLowerCase().includes(query));
   const filteredNotes = notes.filter(
     (n) => !query || htmlToPlain(n.text).toLowerCase().includes(query)
   );
+
+  const editorDisabled = selectedId === undefined;
 
   return (
     <div className="db">
@@ -194,69 +208,89 @@ function Database() {
         </div>
       </nav>
 
-      {/* ── Body ── */}
-      <div className="db-body">
+      {/* ── Workspace ── */}
+      <div className="db-workspace">
 
-        {/* Notes list */}
-        <div className="db-list">
-          <div className="db-controls">
-            <input
-              className="db-search"
-              type="text"
-              placeholder="Search notes..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+        {/* Detached toolbar surface — only shown when a note is open */}
+        {dbEditor && !editorDisabled && (
+          <div className="db-toolbar-surface">
+            <EditorToolbar
+              editor={dbEditor}
+              zoom={dbZoom}
+              onZoomChange={handleZoomChange}
+            />
+          </div>
+        )}
+
+        {/* Main surface: notes list + editor side by side */}
+        <div className="db-main-surface">
+
+          {/* Notes list */}
+          <div className="db-list">
+            <div className="db-cards">
+
+              {/* Draft (always first) */}
+              {showDraft && (
+                <button
+                  className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
+                  onClick={() => selectNote(null)}
+                >
+                  <span className="db-card-title">{firstLine(draft)}</span>
+                  <div className="db-card-meta">
+                    <span className="db-active-dot" title="Active in Capture" />
+                  </div>
+                </button>
+              )}
+
+              {/* Saved notes */}
+              {filteredNotes.map((note) => (
+                <button
+                  key={note.id}
+                  className={`db-card${selectedId === note.id ? " db-card-selected" : ""}`}
+                  onClick={() => selectNote(note.id)}
+                >
+                  <span className="db-card-title">{firstLine(note.text)}</span>
+                  <div className="db-card-meta">
+                    {note.pinned && <Pin size={10} strokeWidth={2.5} className="db-icon-pin" />}
+                    {note.follow_up_date && <Calendar size={10} strokeWidth={2.5} className="db-icon-cal" />}
+                    <span className="db-card-date">{smartDate(note.updated_at)}</span>
+                  </div>
+                </button>
+              ))}
+
+              {!showDraft && filteredNotes.length === 0 && (
+                <div className="db-empty">
+                  {search ? "No notes match." : "No saved notes yet."}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Editor panel */}
+          <div className="db-editor-panel">
+
+            {/* Search bar in upper-right of editor surface */}
+            <div className="db-editor-header">
+              <input
+                className="db-search"
+                type="text"
+                placeholder="Search notes..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <RichEditor
+              ref={editorRef}
+              onChange={handleEditorChange}
+              disabled={editorDisabled}
+              hideToolbar={true}
+              onEditorReady={(e) => setDbEditor(e)}
+              onZoomChange={(z) => setDbZoom(z)}
             />
           </div>
 
-          <div className="db-cards">
-
-            {/* Draft (always first) */}
-            {showDraft && (
-              <button
-                className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
-                onClick={() => selectNote(null)}
-              >
-                <span className="db-card-title">{firstLine(draft)}</span>
-                <div className="db-card-meta">
-                  <span className="db-active-dot" title="Active in Capture" />
-                </div>
-              </button>
-            )}
-
-            {/* Saved notes */}
-            {filteredNotes.map((note) => (
-              <button
-                key={note.id}
-                className={`db-card${selectedId === note.id ? " db-card-selected" : ""}`}
-                onClick={() => selectNote(note.id)}
-              >
-                <span className="db-card-title">{firstLine(note.text)}</span>
-                <div className="db-card-meta">
-                  {note.pinned && <Pin size={10} strokeWidth={2.5} className="db-icon-pin" />}
-                  {note.follow_up_date && <Calendar size={10} strokeWidth={2.5} className="db-icon-cal" />}
-                  <span className="db-card-date">{smartDate(note.updated_at)}</span>
-                </div>
-              </button>
-            ))}
-
-            {!showDraft && filteredNotes.length === 0 && (
-              <div className="db-empty">
-                {search ? "No notes match your search." : "No saved notes yet."}
-              </div>
-            )}
-          </div>
         </div>
-
-        {/* Editor */}
-        <div className="db-editor-panel">
-          <RichEditor
-            ref={editorRef}
-            onChange={handleEditorChange}
-            disabled={selectedId === undefined}
-          />
-        </div>
-
       </div>
     </div>
   );

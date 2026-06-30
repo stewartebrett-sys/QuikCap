@@ -1,15 +1,15 @@
 /* ════════════════════════════════════════════════════════
-   Notes Database — light theme, matches Quick Capture.
+   Notes Database — workspace surface layout.
    ════════════════════════════════════════════════════════ */
 
-/* ── Root ── */
+/* ── Window root: workspace background ── */
 
 .db {
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: var(--cap-bg);
+  background: #F5F6F8;
   font-family: var(--cap-font);
   color: var(--cap-text);
   overflow: hidden;
@@ -41,9 +41,7 @@
   flex-shrink: 0;
 }
 
-.db-logo-icon {
-  flex-shrink: 0;
-}
+.db-logo-icon { flex-shrink: 0; }
 
 .db-logo-text {
   font-size: 13.5px;
@@ -90,11 +88,7 @@
   white-space: nowrap;
 }
 
-.db-tab:hover {
-  color: var(--cap-text);
-}
-
-/* Active tab: bold text + purple bottom rule */
+.db-tab:hover { color: var(--cap-text); }
 
 .db-tab--active {
   color: var(--cap-text);
@@ -112,25 +106,52 @@
   border-radius: 2px 2px 0 0;
 }
 
-/* Inactive tab: dimmed, no pointer */
-
 .db-tab--inactive {
   color: var(--cap-text-dim);
   cursor: default;
 }
 
-.db-tab--inactive:hover {
-  color: var(--cap-text-dim);
-}
+.db-tab--inactive:hover { color: var(--cap-text-dim); }
 
 /* ════════════════════════════════════════════════════════
-   BODY (notes list + editor, side by side)
+   WORKSPACE CONTAINER
    ════════════════════════════════════════════════════════ */
 
-.db-body {
-  display: flex;
+.db-workspace {
   flex: 1;
   min-height: 0;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Detached toolbar surface ── */
+
+.db-toolbar-surface {
+  background: var(--cap-bg);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Strip the toolbar's own bottom border and surface bg when inside the surface */
+.db-toolbar-surface .editor-toolbar {
+  background: var(--cap-bg);
+  border-bottom: none;
+}
+
+/* ── Main surface: notes list + editor ── */
+
+.db-main-surface {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  background: var(--cap-bg);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -139,42 +160,12 @@
    ════════════════════════════════════════════════════════ */
 
 .db-list {
-  width: 272px;
+  width: 264px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(0, 0, 0, 0.05);
+  border-right: 2px solid rgba(0, 0, 0, 0.07);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--cap-surface);
-}
-
-.db-controls {
-  padding: 10px 10px 8px;
-  flex-shrink: 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-.db-search {
-  width: 100%;
-  background: var(--cap-surface);
-  border: 1px solid var(--cap-border);
-  border-radius: var(--cap-radius);
-  color: var(--cap-text);
-  font-size: 12px;
-  font-family: var(--cap-font);
-  padding: 5px 9px;
-  outline: none;
-  transition: border-color 120ms, box-shadow 120ms;
-  box-sizing: border-box;
-}
-
-.db-search::placeholder {
-  color: var(--cap-text-dim);
-}
-
-.db-search:focus {
-  border-color: rgba(124, 58, 237, 0.35);
-  box-shadow: 0 0 0 2.5px rgba(124, 58, 237, 0.09);
   background: var(--cap-bg);
 }
 
@@ -197,7 +188,7 @@
   border-radius: 2px;
 }
 
-/* ── Row: single horizontal line, title left + meta right ── */
+/* ── Row: title left + meta right ── */
 
 .db-card {
   width: 100%;
@@ -216,13 +207,9 @@
   flex-shrink: 0;
 }
 
-/* ── Hover: faint surface tint ── */
-
 .db-card:hover {
   background: rgba(0, 0, 0, 0.04);
 }
-
-/* ── Selected: very light lavender fill, understated ── */
 
 .db-card-selected {
   background: rgba(124, 58, 237, 0.055);
@@ -231,8 +218,6 @@
 .db-card-selected:hover {
   background: rgba(124, 58, 237, 0.08);
 }
-
-/* ── Title: regular weight by default, semibold when selected ── */
 
 .db-card-title {
   flex: 1;
@@ -249,8 +234,6 @@
   font-weight: 600;
 }
 
-/* ── Meta: icons + date, flush right ── */
-
 .db-card-meta {
   display: flex;
   align-items: center;
@@ -263,8 +246,6 @@
   color: var(--cap-text-dim);
   white-space: nowrap;
 }
-
-/* ── Amber dot: draft note live in Capture ── */
 
 .db-active-dot {
   width: 5px;
@@ -304,5 +285,40 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--cap-bg);
+}
+
+/* ── Search bar in upper-right of editor surface ── */
+
+.db-editor-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 7px 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.db-search {
+  width: 200px;
+  background: #F5F6F8;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--cap-radius);
+  color: var(--cap-text);
+  font-size: 12px;
+  font-family: var(--cap-font);
+  padding: 4px 9px;
+  outline: none;
+  transition: border-color 120ms, box-shadow 120ms;
+  box-sizing: border-box;
+}
+
+.db-search::placeholder {
+  color: var(--cap-text-dim);
+}
+
+.db-search:focus {
+  border-color: rgba(124, 58, 237, 0.35);
+  box-shadow: 0 0 0 2.5px rgba(124, 58, 237, 0.09);
   background: var(--cap-bg);
 }

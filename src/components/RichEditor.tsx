@@ -8,7 +8,7 @@
 
 import "./RichEditor.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import ExtUnderline from "@tiptap/extension-underline";
 import TaskList from "@tiptap/extension-task-list";
@@ -37,34 +37,57 @@ export interface RichEditorHandle {
   setContent: (html: string) => void;
   clear:      () => void;
   focus:      () => void;
+  // Allows an external toolbar (Database context) to drive zoom without loop
+  setZoom:    (z: number) => void;
 }
 
 // ─── Props ────────────────────────────────────────────────
 
 interface Props {
-  onChange?:     (html: string) => void;
-  onEscape?:     () => void;
-  onCtrlEnter?:  (html: string) => void;
-  disabled?:     boolean;
-  placeholder?:  string;
+  onChange?:      (html: string) => void;
+  onEscape?:      () => void;
+  onCtrlEnter?:   (html: string) => void;
+  disabled?:      boolean;
+  placeholder?:   string;
+  // When true the built-in toolbar is suppressed; consumer renders it externally
+  hideToolbar?:   boolean;
+  // Called once when the Tiptap editor instance is ready
+  onEditorReady?: (editor: Editor) => void;
+  // Called whenever zoom changes internally (Ctrl+Wheel) so external toolbar stays in sync
+  onZoomChange?:  (zoom: number) => void;
 }
 
 // ─── Component ───────────────────────────────────────────
 
 const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
-  { onChange, onEscape, onCtrlEnter, disabled = false, placeholder = "Start writing…" },
+  {
+    onChange, onEscape, onCtrlEnter,
+    disabled = false, placeholder = "Start writing…",
+    hideToolbar = false, onEditorReady, onZoomChange,
+  },
   ref,
 ) {
-  const [zoom, setZoom] = useState(100);
+  const [zoom, setZoomRaw] = useState(100);
 
   // Stable ref so the handleKeyDown closure always calls the current editor
-  const editorRef   = useRef<ReturnType<typeof useEditor>>(null);
+  const editorRef    = useRef<ReturnType<typeof useEditor>>(null);
   const editorAreaRef = useRef<HTMLDivElement>(null);
-  // Stable callbacks wrapped in refs so we never capture stale closures
-  const onEscapeRef     = useRef(onEscape);
-  const onCtrlEnterRef  = useRef(onCtrlEnter);
-  useEffect(() => { onEscapeRef.current    = onEscape;    }, [onEscape]);
-  useEffect(() => { onCtrlEnterRef.current = onCtrlEnter; }, [onCtrlEnter]);
+
+  // Stable callbacks wrapped in refs to avoid stale closures
+  const onEscapeRef      = useRef(onEscape);
+  const onCtrlEnterRef   = useRef(onCtrlEnter);
+  const onZoomChangeRef  = useRef(onZoomChange);
+  const onEditorReadyRef = useRef(onEditorReady);
+  useEffect(() => { onEscapeRef.current      = onEscape;      }, [onEscape]);
+  useEffect(() => { onCtrlEnterRef.current   = onCtrlEnter;   }, [onCtrlEnter]);
+  useEffect(() => { onZoomChangeRef.current  = onZoomChange;  }, [onZoomChange]);
+  useEffect(() => { onEditorReadyRef.current = onEditorReady; }, [onEditorReady]);
+
+  // Internal zoom setter — notifies parent so an external toolbar stays in sync
+  const setZoom = (z: number) => {
+    setZoomRaw(z);
+    onZoomChangeRef.current?.(z);
+  };
 
   const editor = useEditor({
     extensions: [
@@ -176,19 +199,28 @@ const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
     editorRef.current = editor;
   }, [editor]);
 
+  // Notify parent when editor instance is ready
+  useEffect(() => {
+    if (editor) onEditorReadyRef.current?.(editor);
+  }, [editor]);
+
   // Keep editable in sync with the disabled prop
   useEffect(() => {
     editor?.setEditable(!disabled);
   }, [editor, disabled]);
 
-  // Ctrl+Wheel → zoom editor text (not entire UI)
+  // Ctrl+Wheel → zoom editor text; notify parent so external toolbar syncs
   useEffect(() => {
     const el = editorAreaRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
-      setZoom((prev) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP))));
+      setZoomRaw((prev) => {
+        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)));
+        onZoomChangeRef.current?.(next);
+        return next;
+      });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -201,13 +233,15 @@ const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
     setContent: (html) => { editor?.commands.setContent(html); },
     clear:      () => { editor?.commands.clearContent(true); },
     focus:      () => { editor?.commands.focus("end"); },
+    // Only updates internal state — does NOT call onZoomChange to avoid loop
+    setZoom:    (z) => setZoomRaw(z),
   }));
 
   if (!editor) return null;
 
   return (
     <div className={`re-wrap${disabled ? " re-wrap--disabled" : ""}`}>
-      {!disabled && (
+      {!disabled && !hideToolbar && (
         <EditorToolbar editor={editor} zoom={zoom} onZoomChange={setZoom} />
       )}
       <div
