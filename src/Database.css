@@ -171,6 +171,40 @@
   background: var(--cap-bg);
 }
 
+/* ── New Note button ── */
+
+.db-list-actions {
+  padding: 8px 8px 6px;
+  flex-shrink: 0;
+}
+
+.db-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  font-family: var(--cap-font);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cap-text-sub);
+  cursor: pointer;
+  transition: background 70ms, border-color 70ms, color 70ms;
+}
+
+.db-new-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.16);
+  color: var(--cap-text);
+}
+
+.db-new-btn:active {
+  transform: scale(0.98);
+}
+
 /* ── Note rows ── */
 
 .db-cards {

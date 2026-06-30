@@ -2,10 +2,12 @@ import "./Database.css";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Pin, Calendar } from "lucide-react";
+import { Pin, Calendar, Plus } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 import RichEditor, { RichEditorHandle } from "./components/RichEditor";
 import { EditorToolbar } from "./components/EditorToolbar";
+
+// ─── Types ───────────────────────────────────────────────
 
 interface Note {
   id: string;
@@ -16,6 +18,8 @@ interface Note {
   follow_up_date?: string;
   status: string;
 }
+
+// ─── Utilities ───────────────────────────────────────────
 
 function htmlToPlain(html: string): string {
   return html
@@ -32,7 +36,32 @@ function htmlToPlain(html: string): string {
 
 function firstLine(html: string): string {
   const plain = htmlToPlain(html);
-  return plain.split("\n").find((l) => l.trim()) ?? "Untitled";
+  return plain.split("\n").find((l) => l.trim()) ?? "New Note";
+}
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Custom sort: pinned → overdue follow-ups → updatedAt desc
+function sortNotes(notes: Note[]): Note[] {
+  const today = todayISO();
+  return [...notes].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    const aDue = !!(a.follow_up_date && a.follow_up_date <= today);
+    const bDue = !!(b.follow_up_date && b.follow_up_date <= today);
+    if (aDue !== bDue) return aDue ? -1 : 1;
+    return b.updated_at - a.updated_at;
+  });
+}
+
+function isInteractiveElement(): boolean {
+  const el = document.activeElement;
+  if (!el) return false;
+  if ((el as HTMLElement).getAttribute?.("contenteditable") === "true") return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
 }
 
 function smartDate(ms: number): string {
@@ -48,50 +77,52 @@ function smartDate(ms: number): string {
   if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
 
   const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
-  if (diffDays < 7) {
-    return date.toLocaleDateString([], { weekday: "short" });
-  }
-
+  if (diffDays < 7) return date.toLocaleDateString([], { weekday: "short" });
   if (date.getFullYear() === now.getFullYear()) {
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
   }
-
   return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
 const AUTOSAVE_MS = 500;
 
+// ─── Component ───────────────────────────────────────────
+
 function Database() {
   const appWindow = getCurrentWindow();
   const [notes, setNotes] = useState<Note[]>([]);
   const [draft, setDraft] = useState("");
-  // undefined = nothing selected; null = draft selected; string = saved note id
+  // undefined = nothing selected; null = draft; string = saved note id
   const [selectedId, setSelectedId] = useState<string | null | undefined>(undefined);
   const [search, setSearch] = useState("");
-  // Editor instance + zoom exposed from RichEditor for the detached toolbar
   const [dbEditor, setDbEditor] = useState<Editor | null>(null);
   const [dbZoom, setDbZoom] = useState(100);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const editorRef = useRef<RichEditorHandle>(null);
-  // Track what's in the editor so we can flush before switching
   const editorHtmlRef = useRef<string>("");
 
-  // Initial load
+  // Stable refs so keyboard handlers always call the current closure
+  const createNoteRef = useRef<() => void>(() => {});
+  const deleteNoteRef = useRef<() => void>(() => {});
+
+  // ── Initial load ──────────────────────────────────────
+
   useEffect(() => {
     Promise.all([invoke<Note[]>("list_notes"), invoke<string>("load_draft")]).then(
       ([fetchedNotes, fetchedDraft]) => {
-        setNotes(fetchedNotes);
+        const sorted = sortNotes(fetchedNotes);
+        setNotes(sorted);
         setDraft(fetchedDraft);
 
         if (fetchedDraft.trim()) {
           setSelectedId(null);
           editorHtmlRef.current = fetchedDraft;
           editorRef.current?.setContent(fetchedDraft);
-        } else if (fetchedNotes.length > 0) {
-          setSelectedId(fetchedNotes[0].id);
-          editorHtmlRef.current = fetchedNotes[0].text;
-          editorRef.current?.setContent(fetchedNotes[0].text);
+        } else if (sorted.length > 0) {
+          setSelectedId(sorted[0].id);
+          editorHtmlRef.current = sorted[0].text;
+          editorRef.current?.setContent(sorted[0].text);
         } else {
           setSelectedId(undefined);
         }
@@ -99,12 +130,13 @@ function Database() {
     );
   }, []);
 
-  // Refresh when window regains focus
+  // ── Refresh on window focus ───────────────────────────
+
   useEffect(() => {
     const onFocus = () => {
       Promise.all([invoke<Note[]>("list_notes"), invoke<string>("load_draft")]).then(
         ([freshNotes, freshDraft]) => {
-          setNotes(freshNotes);
+          setNotes(sortNotes(freshNotes));
           setDraft(freshDraft);
         }
       );
@@ -112,6 +144,27 @@ function Database() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  // ── Keyboard shortcuts ────────────────────────────────
+  // Ctrl+N = new note; Delete/Backspace (when not in editor) = archive note
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "n" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        createNoteRef.current();
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && !isInteractiveElement()) {
+        e.preventDefault();
+        deleteNoteRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // ── Save / select helpers ─────────────────────────────
 
   const flushSave = () => {
     clearTimeout(saveTimer.current);
@@ -121,9 +174,7 @@ function Database() {
     } else if (typeof selectedId === "string") {
       invoke("update_note", { id: selectedId, text: html }).catch(console.error);
       setNotes((prev) =>
-        prev.map((n) =>
-          n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n
-        )
+        prev.map((n) => n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n)
       );
     }
   };
@@ -137,21 +188,97 @@ function Database() {
     editorRef.current?.focus();
   };
 
+  // ── New note ──────────────────────────────────────────
+
+  const createNewNote = async () => {
+    // If a blank note already exists, just select it
+    const existing = notes.find((n) => !htmlToPlain(n.text).trim());
+    if (existing) {
+      selectNote(existing.id);
+      return;
+    }
+    // Also bail if the currently-selected note is already blank
+    if (typeof selectedId === "string") {
+      const current = notes.find((n) => n.id === selectedId);
+      if (current && !htmlToPlain(current.text).trim()) {
+        editorRef.current?.focus();
+        return;
+      }
+    }
+
+    try {
+      const newNote = await invoke<Note>("create_note");
+      setNotes((prev) => sortNotes([newNote, ...prev]));
+      setSelectedId(newNote.id);
+      editorHtmlRef.current = "";
+      editorRef.current?.setContent("");
+      editorRef.current?.focus();
+    } catch (e) {
+      console.error("Failed to create note:", e);
+    }
+  };
+
+  createNoteRef.current = createNewNote;
+
+  // ── Delete (archive) note ─────────────────────────────
+
+  const deleteSelectedNote = async () => {
+    if (typeof selectedId !== "string") return;
+
+    clearTimeout(saveTimer.current); // don't autosave the note we're deleting
+
+    try {
+      await invoke("archive_note", { id: selectedId });
+    } catch (e) {
+      console.error("Failed to archive note:", e);
+      return;
+    }
+
+    const remaining = sortNotes(notes.filter((n) => n.id !== selectedId));
+    setNotes(remaining);
+
+    if (remaining.length > 0) {
+      const next = remaining[0];
+      setSelectedId(next.id);
+      editorHtmlRef.current = next.text;
+      editorRef.current?.setContent(next.text);
+      editorRef.current?.focus();
+    } else if (draft.trim()) {
+      setSelectedId(null);
+      editorHtmlRef.current = draft;
+      editorRef.current?.setContent(draft);
+      editorRef.current?.focus();
+    } else {
+      // No notes and no draft — create a fresh blank note
+      setSelectedId(undefined);
+      editorHtmlRef.current = "";
+      editorRef.current?.setContent("");
+      try {
+        const newNote = await invoke<Note>("create_note");
+        setNotes([newNote]);
+        setSelectedId(newNote.id);
+        editorRef.current?.focus();
+      } catch (e) {
+        console.error("Failed to create replacement note:", e);
+      }
+    }
+  };
+
+  deleteNoteRef.current = deleteSelectedNote;
+
+  // ── Editor change → immediate list update + debounced save ──
+
   const handleEditorChange = (html: string) => {
     editorHtmlRef.current = html;
 
-    // Update list immediately so title and date reflect every keystroke
     if (selectedId === null) {
       setDraft(html);
     } else if (typeof selectedId === "string") {
       setNotes((prev) =>
-        prev.map((n) =>
-          n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n
-        )
+        prev.map((n) => n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n)
       );
     }
 
-    // Debounce the backend write
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       if (selectedId === null) {
@@ -162,20 +289,22 @@ function Database() {
     }, AUTOSAVE_MS);
   };
 
-  // Toolbar zoom controlled from outside RichEditor;
-  // setZoom on the handle only updates the internal zoom variable (no callback loop)
   const handleZoomChange = (z: number) => {
     setDbZoom(z);
     editorRef.current?.setZoom(z);
   };
 
+  // ── Filtered + sorted note list ───────────────────────
+
   const query = search.toLowerCase();
   const showDraft = draft.trim() && (!query || htmlToPlain(draft).toLowerCase().includes(query));
-  const filteredNotes = notes.filter(
-    (n) => !query || htmlToPlain(n.text).toLowerCase().includes(query)
+  const filteredNotes = sortNotes(
+    notes.filter((n) => !query || htmlToPlain(n.text).toLowerCase().includes(query))
   );
 
   const editorDisabled = selectedId === undefined;
+
+  // ── Render ────────────────────────────────────────────
 
   return (
     <div className="db">
@@ -194,7 +323,6 @@ function Database() {
           <button className="db-tab db-tab--inactive">Settings</button>
         </div>
 
-        {/* Window controls — mirrors Quick Capture */}
         <div className="cap-winctrl-group" data-tauri-no-drag style={{ marginLeft: "auto" }}>
           <button className="cap-winctrl cap-winctrl--min" onClick={() => appWindow.minimize()} title="Minimize">
             <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" rx="0.5" fill="currentColor" /></svg>
@@ -211,22 +339,29 @@ function Database() {
       {/* ── Workspace ── */}
       <div className="db-workspace">
 
-        {/* Detached toolbar surface — only shown when a note is open */}
         {dbEditor && !editorDisabled && (
           <div className="db-toolbar-surface">
-            <EditorToolbar
-              editor={dbEditor}
-              zoom={dbZoom}
-              onZoomChange={handleZoomChange}
-            />
+            <EditorToolbar editor={dbEditor} zoom={dbZoom} onZoomChange={handleZoomChange} />
           </div>
         )}
 
-        {/* Main surface: notes list + editor side by side */}
         <div className="db-main-surface">
 
           {/* Notes list */}
           <div className="db-list">
+
+            {/* New Note button */}
+            <div className="db-list-actions">
+              <button
+                className="db-new-btn"
+                onClick={createNewNote}
+                title="New note (Ctrl+N)"
+              >
+                <Plus size={13} strokeWidth={2.5} />
+                New Note
+              </button>
+            </div>
+
             <div className="db-cards">
 
               {/* Draft (always first) */}
@@ -269,7 +404,6 @@ function Database() {
           {/* Editor panel */}
           <div className="db-editor-panel">
 
-            {/* Search bar in upper-right of editor surface */}
             <div className="db-editor-header">
               <input
                 className="db-search"

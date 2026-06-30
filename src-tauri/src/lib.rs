@@ -38,6 +38,23 @@ fn now_millis() -> u64 {
         .as_millis() as u64
 }
 
+fn load_notes(app: &tauri::AppHandle) -> Vec<Note> {
+    let notes_path = data_dir(app).join("notes.json");
+    if !notes_path.exists() {
+        return Vec::new();
+    }
+    let raw = fs::read_to_string(&notes_path).unwrap_or_default();
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
+fn save_notes(app: &tauri::AppHandle, notes: &[Note]) -> Result<(), String> {
+    let dir = data_dir(app);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string(notes).map_err(|e| e.to_string())?;
+    fs::write(dir.join("notes.json"), json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn load_draft(app: tauri::AppHandle) -> String {
     let text = fs::read_to_string(data_dir(&app).join("draft.txt")).unwrap_or_default();
@@ -75,18 +92,9 @@ fn finish_note(app: tauri::AppHandle, text: String, follow_up_date: Option<Strin
         status: "finished".to_string(),
     };
 
-    let notes_path = dir.join("notes.json");
-    let mut notes: Vec<Note> = if notes_path.exists() {
-        let raw = fs::read_to_string(&notes_path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&raw).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-
+    let mut notes = load_notes(&app);
     notes.push(note.clone());
-
-    let json = serde_json::to_string(&notes).map_err(|e| e.to_string())?;
-    fs::write(&notes_path, json).map_err(|e| e.to_string())?;
+    save_notes(&app, &notes)?;
 
     fs::write(dir.join("draft.txt"), "").map_err(|e| e.to_string())?;
 
@@ -96,19 +104,47 @@ fn finish_note(app: tauri::AppHandle, text: String, follow_up_date: Option<Strin
 
 #[tauri::command]
 fn list_notes(app: tauri::AppHandle) -> Vec<Note> {
-    let notes_path = data_dir(&app).join("notes.json");
-    if !notes_path.exists() {
-        return Vec::new();
-    }
-    let raw = fs::read_to_string(&notes_path).unwrap_or_default();
-    let mut notes: Vec<Note> = serde_json::from_str(&raw).unwrap_or_default();
+    let mut notes = load_notes(&app);
     for note in &mut notes {
         if note.updated_at == 0 {
             note.updated_at = note.created_at;
         }
     }
+    // Exclude archived (soft-deleted) notes
+    notes.retain(|n| n.status != "archived");
     notes.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     notes
+}
+
+#[tauri::command]
+fn create_note(app: tauri::AppHandle) -> Result<Note, String> {
+    let millis = now_millis();
+    let note = Note {
+        id: millis.to_string(),
+        text: String::new(),
+        created_at: millis,
+        updated_at: millis,
+        follow_up_date: None,
+        pinned: false,
+        status: "active".to_string(),
+    };
+
+    let mut notes = load_notes(&app);
+    notes.push(note.clone());
+    save_notes(&app, &notes)?;
+
+    println!("[QuikCap] Note created (id: {})", note.id);
+    Ok(note)
+}
+
+#[tauri::command]
+fn archive_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let mut notes = load_notes(&app);
+    if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
+        note.status = "archived".to_string();
+        println!("[QuikCap] Note archived (id: {})", id);
+    }
+    save_notes(&app, &notes)
 }
 
 #[tauri::command]
@@ -121,16 +157,12 @@ fn hide_capture(app: tauri::AppHandle) {
 
 #[tauri::command]
 fn update_note(app: tauri::AppHandle, id: String, text: String) -> Result<(), String> {
-    let notes_path = data_dir(&app).join("notes.json");
-    let raw = fs::read_to_string(&notes_path).map_err(|e| e.to_string())?;
-    let mut notes: Vec<Note> = serde_json::from_str(&raw).unwrap_or_default();
+    let mut notes = load_notes(&app);
     if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
         note.text = text;
         note.updated_at = now_millis();
     }
-    let json = serde_json::to_string(&notes).map_err(|e| e.to_string())?;
-    fs::write(&notes_path, json).map_err(|e| e.to_string())?;
-    Ok(())
+    save_notes(&app, &notes)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -215,19 +247,17 @@ pub fn run() {
             save_draft,
             finish_note,
             list_notes,
+            create_note,
+            archive_note,
             update_note,
             hide_capture
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| match event {
-            // Prevent the app from quitting — only a future tray "Quit" action
-            // should terminate the process.
             tauri::RunEvent::ExitRequested { api, .. } => {
                 api.prevent_exit();
             }
-            // macOS dock icon clicked while all windows are hidden → bring
-            // the database window back to the front.
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { has_visible_windows, .. } => {
                 if !has_visible_windows {
