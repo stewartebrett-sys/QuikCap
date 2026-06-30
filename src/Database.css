@@ -133,13 +133,15 @@
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 8px;
   flex-shrink: 0;
-  overflow: hidden;
+  /* overflow: visible — lets split-button dropdowns escape the surface */
+  overflow: visible;
 }
 
-/* Strip the toolbar's own bottom border and surface bg when inside the surface */
+/* Strip bottom border; add border-radius so corners stay rounded without overflow:hidden */
 .db-toolbar-surface .editor-toolbar {
   background: var(--cap-bg);
   border-bottom: none;
+  border-radius: 8px;
 }
 
 /* ── Main surface: notes list + editor ── */
@@ -288,7 +290,7 @@
   background: var(--cap-bg);
 }
 
-/* ── Search bar in upper-right of editor surface ── */
+/* ── Search bar floats top-right of editor surface, no divider ── */
 
 .db-editor-header {
   display: flex;
@@ -296,13 +298,13 @@
   align-items: center;
   padding: 7px 14px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  /* no border-bottom — editor content flows naturally below */
 }
 
 .db-search {
   width: 200px;
-  background: #F5F6F8;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--cap-bg);
+  border: 1px solid rgba(0, 0, 0, 0.18);
   border-radius: var(--cap-radius);
   color: var(--cap-text);
   font-size: 12px;

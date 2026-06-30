@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   EditorToolbar — Office-inspired formatting toolbar.
+   EditorToolbar — Office-inspired, scaled up ~18%.
    ════════════════════════════════════════════════════════ */
 
 /* ── Container ── */
@@ -9,31 +9,32 @@
   align-items: center;
   flex-wrap: nowrap;
   gap: 1px;
-  padding: 4px 8px;
+  padding: 5px 10px;
   background: var(--cap-surface);
   border-bottom: 1px solid var(--cap-border);
   flex-shrink: 0;
-  overflow: hidden;
+  /* overflow: visible — required for split-button dropdowns */
+  overflow: visible;
 }
 
-/* ── Separator ── */
+/* ── Group separator ── */
 
 .tbr-sep {
   width: 1px;
-  height: 18px;
+  height: 22px;
   background: rgba(0, 0, 0, 0.1);
-  margin: 0 4px;
+  margin: 0 6px;
   flex-shrink: 0;
 }
 
-/* ── Toolbar button ── */
+/* ── Standard toolbar button ── */
 
 .tbr-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 5px;
   color: #4b5563;
   transition: background 70ms, color 70ms;
@@ -45,10 +46,7 @@
   font-family: var(--cap-font);
 }
 
-.tbr-btn svg {
-  flex-shrink: 0;
-  stroke-width: 2;
-}
+.tbr-btn svg { flex-shrink: 0; }
 
 .tbr-btn:hover {
   background: rgba(0, 0, 0, 0.06);
@@ -57,7 +55,7 @@
 
 .tbr-btn:active:not(.tbr-btn--dim) {
   background: rgba(0, 0, 0, 0.1);
-  transform: scale(0.93);
+  transform: scale(0.94);
 }
 
 .tbr-btn--active {
@@ -75,10 +73,10 @@
   pointer-events: none;
 }
 
-/* ── Font family / size selects ── */
+/* ── Font selects ── */
 
 .tbr-select {
-  height: 28px;
+  height: 30px;
   padding: 0 5px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 4px;
@@ -93,11 +91,154 @@
   margin: 0 2px;
 }
 
-.tbr-select:hover  { border-color: rgba(0, 0, 0, 0.22); }
-.tbr-select:focus  { border-color: var(--cap-purple); }
+.tbr-select:hover { border-color: rgba(0, 0, 0, 0.22); }
+.tbr-select:focus { border-color: var(--cap-purple); }
 
-.tbr-select--family { width: 108px; }
+.tbr-select--family { width: 110px; }
 .tbr-select--size   { width:  52px; }
+
+/* ════════════════════════════════════════════════════════
+   SPLIT BUTTON
+   ════════════════════════════════════════════════════════ */
+
+.tbr-split {
+  display: flex;
+  align-items: center;
+  border-radius: 5px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.tbr-split--dim {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* ── Icon (action) side ── */
+
+.tbr-split-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 36px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #4b5563;
+  border-radius: 5px 0 0 5px;
+  transition: background 70ms, color 70ms;
+}
+
+.tbr-split-icon:hover,
+.tbr-split-icon--hov {
+  background: rgba(0, 0, 0, 0.06);
+  color: #111827;
+}
+
+.tbr-split--active .tbr-split-icon {
+  color: var(--cap-purple);
+  background: var(--cap-purple-tint);
+}
+
+.tbr-split--active .tbr-split-icon:hover,
+.tbr-split--active .tbr-split-icon--hov {
+  background: var(--cap-purple-tint2);
+}
+
+/* ── Separator (only on hover) ── */
+
+.tbr-split-sep {
+  width: 1px;
+  height: 18px;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 70ms;
+  pointer-events: none;
+}
+
+.tbr-split-sep--vis {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* ── Arrow (dropdown) side ── */
+
+.tbr-split-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 36px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #9ca3af;
+  border-radius: 0 5px 5px 0;
+  transition: background 70ms, color 70ms;
+}
+
+.tbr-split-arrow:hover,
+.tbr-split-arrow--hov {
+  background: rgba(0, 0, 0, 0.06);
+  color: #4b5563;
+}
+
+.tbr-split--active .tbr-split-arrow {
+  color: var(--cap-purple);
+  background: var(--cap-purple-tint);
+}
+
+.tbr-split--active .tbr-split-arrow:hover,
+.tbr-split--active .tbr-split-arrow--hov {
+  background: var(--cap-purple-tint2);
+}
+
+/* ════════════════════════════════════════════════════════
+   DROPDOWN MENU
+   ════════════════════════════════════════════════════════ */
+
+.tbr-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  padding: 4px;
+  z-index: 9020;
+  min-width: 148px;
+  user-select: none;
+}
+
+.tbr-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: var(--cap-font);
+  font-size: 12.5px;
+  color: var(--cap-text);
+  text-align: left;
+  transition: background 60ms;
+  white-space: nowrap;
+}
+
+.tbr-dropdown-item:hover { background: rgba(0, 0, 0, 0.05); }
+
+.tbr-dropdown-item--active {
+  color: var(--cap-purple);
+  background: var(--cap-purple-tint);
+}
+
+/* ════════════════════════════════════════════════════════
+   COLOR ICONS
+   ════════════════════════════════════════════════════════ */
 
 /* ── Popover wrapper ── */
 
@@ -117,7 +258,7 @@
 }
 
 .tbr-font-color-a {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1;
   font-family: var(--cap-font);
@@ -136,7 +277,7 @@
 
 .tbr-color-icon-bar {
   display: block;
-  width: 14px;
+  width: 16px;
   height: 3px;
   border-radius: 1.5px;
   flex-shrink: 0;

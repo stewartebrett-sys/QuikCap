@@ -178,7 +178,8 @@ button { cursor: pointer; border: none; background: none; font-family: var(--cap
   background: var(--cap-bg);
   border-bottom: 1px solid var(--cap-border);
   flex-shrink: 0;
-  overflow: hidden;
+  /* overflow: visible — required for split-button dropdowns */
+  overflow: visible;
 }
 
 /* Separator */

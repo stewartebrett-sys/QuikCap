@@ -50,12 +50,13 @@ export function getActiveHighlight(editor: Editor): string {
 // ─── Component ─────────────────────────────────────────────
 
 export interface ColorPickerPopoverProps {
-  editor:   Editor;
-  onClose:  () => void;
-  mode?:    "text" | "highlight";
+  editor:    Editor;
+  onClose:   () => void;
+  mode?:     "text" | "highlight";
+  onSelect?: (color: string) => void;
 }
 
-export function ColorPickerPopover({ editor, onClose, mode = "text" }: ColorPickerPopoverProps) {
+export function ColorPickerPopover({ editor, onClose, mode = "text", onSelect }: ColorPickerPopoverProps) {
   const isHighlight = mode === "highlight";
   const palette     = isHighlight ? HIGHLIGHT_COLORS : PRESET_COLORS;
   const activeColor = isHighlight ? getActiveHighlight(editor) : getActiveColor(editor);
@@ -66,6 +67,7 @@ export function ColorPickerPopover({ editor, onClose, mode = "text" }: ColorPick
     } else {
       editor.chain().focus().setColor(hex).run();
     }
+    onSelect?.(hex);
     onClose();
   };
 
