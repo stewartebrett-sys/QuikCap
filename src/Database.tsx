@@ -32,11 +32,6 @@ function firstLine(html: string): string {
   return plain.split("\n").find((l) => l.trim()) ?? "Untitled";
 }
 
-function previewText(html: string): string {
-  const plain = htmlToPlain(html);
-  const lines = plain.split("\n").filter((l) => l.trim());
-  return lines.slice(1).join(" ").trim();
-}
 
 function smartDate(ms: number): string {
   const date = new Date(ms);
@@ -201,16 +196,9 @@ function Database() {
                 className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
                 onClick={() => selectNote(null)}
               >
-                <div className="db-card-header">
-                  <span className="db-card-title">{firstLine(draft)}</span>
-                  <div className="db-card-icons">
-                    <span className="db-active-dot" title="Active in Capture" />
-                  </div>
-                </div>
-                {previewText(draft) && (
-                  <div className="db-card-preview">{previewText(draft)}</div>
-                )}
-                <div className="db-card-footer">
+                <span className="db-card-title">{firstLine(draft)}</span>
+                <div className="db-card-meta">
+                  <span className="db-active-dot" title="Active in Capture" />
                   <span className="db-card-date">Active</span>
                 </div>
               </button>
@@ -223,19 +211,10 @@ function Database() {
                 className={`db-card${selectedId === note.id ? " db-card-selected" : ""}`}
                 onClick={() => selectNote(note.id)}
               >
-                <div className="db-card-header">
-                  <span className="db-card-title">{firstLine(note.text)}</span>
-                  {(note.pinned || note.follow_up_date) && (
-                    <div className="db-card-icons">
-                      {note.pinned && <Pin size={10} strokeWidth={2.5} className="db-icon-pin" />}
-                      {note.follow_up_date && <Calendar size={10} strokeWidth={2.5} className="db-icon-cal" />}
-                    </div>
-                  )}
-                </div>
-                {previewText(note.text) && (
-                  <div className="db-card-preview">{previewText(note.text)}</div>
-                )}
-                <div className="db-card-footer">
+                <span className="db-card-title">{firstLine(note.text)}</span>
+                <div className="db-card-meta">
+                  {note.pinned && <Pin size={10} strokeWidth={2.5} className="db-icon-pin" />}
+                  {note.follow_up_date && <Calendar size={10} strokeWidth={2.5} className="db-icon-cal" />}
                   <span className="db-card-date">{smartDate(note.updated_at)}</span>
                 </div>
               </button>
