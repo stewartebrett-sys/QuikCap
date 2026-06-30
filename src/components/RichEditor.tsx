@@ -25,7 +25,9 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import ExtImage from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 
+import FontFamily from "@tiptap/extension-font-family";
 import { IndentExt } from "./IndentExtension";
+import { FontSizeExtension } from "./FontSizeExtension";
 import { EditorToolbar, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP } from "./EditorToolbar";
 import { FloatingToolbar } from "./FloatingToolbar";
 
@@ -95,10 +97,12 @@ const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
       ExtUnderline,
       TaskList,
       TaskItem.configure({ nested: true }),
-      Highlight,
+      Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TextStyle,
+      FontFamily,
+      FontSizeExtension,
       Color,
       ExtTable.configure({ resizable: false }),
       TableRow,

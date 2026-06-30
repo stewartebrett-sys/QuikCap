@@ -1,17 +1,15 @@
 /* ════════════════════════════════════════════════════════
-   EditorToolbar — shared formatting toolbar styles.
-   Used by Quick Capture (via Capture.tsx) and the Notes
-   Database (via RichEditor.tsx → EditorToolbar.tsx).
+   EditorToolbar — Office-inspired formatting toolbar.
    ════════════════════════════════════════════════════════ */
 
-/* ── Toolbar container (shared by Capture + Database) ── */
+/* ── Container ── */
 
 .editor-toolbar {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
   gap: 1px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   background: var(--cap-surface);
   border-bottom: 1px solid var(--cap-border);
   flex-shrink: 0;
@@ -34,11 +32,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 36px;
-  border-radius: 6px;
-  color: #5b6472;
-  transition: background 80ms, color 80ms;
+  width: 32px;
+  height: 32px;
+  border-radius: 5px;
+  color: #4b5563;
+  transition: background 70ms, color 70ms;
   flex-shrink: 0;
   position: relative;
   border: none;
@@ -49,7 +47,7 @@
 
 .tbr-btn svg {
   flex-shrink: 0;
-  stroke-width: 1.75;
+  stroke-width: 2;
 }
 
 .tbr-btn:hover {
@@ -59,7 +57,7 @@
 
 .tbr-btn:active:not(.tbr-btn--dim) {
   background: rgba(0, 0, 0, 0.1);
-  transform: scale(0.94);
+  transform: scale(0.93);
 }
 
 .tbr-btn--active {
@@ -73,60 +71,33 @@
 }
 
 .tbr-btn--dim {
-  opacity: 0.28;
+  opacity: 0.25;
   pointer-events: none;
 }
 
-/* ── Font size A− / % / A+ control ── */
+/* ── Font family / size selects ── */
 
-.tbr-zoom-ctrl {
-  display: flex;
-  align-items: center;
-  gap: 1px;
+.tbr-select {
+  height: 28px;
+  padding: 0 5px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  background: var(--cap-bg);
+  color: var(--cap-text);
+  font-family: var(--cap-font);
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
   flex-shrink: 0;
+  transition: border-color 80ms;
   margin: 0 2px;
 }
 
-.tbr-zoom-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
-  padding: 0 6px;
-  border-radius: 5px;
-  color: #5b6472;
-  font-family: var(--cap-font);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 80ms, color 80ms;
-  line-height: 1;
-  white-space: nowrap;
-  flex-shrink: 0;
-  border: none;
-  background: none;
-}
+.tbr-select:hover  { border-color: rgba(0, 0, 0, 0.22); }
+.tbr-select:focus  { border-color: var(--cap-purple); }
 
-.tbr-zoom-btn--sm { font-size: 11px; }
-.tbr-zoom-btn--lg { font-size: 13px; }
-
-.tbr-zoom-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #111827;
-}
-
-.tbr-zoom-btn:active {
-  background: rgba(0, 0, 0, 0.1);
-}
-
-.tbr-zoom-pct {
-  font-size: 11px;
-  color: #6b7280;
-  min-width: 34px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-  user-select: none;
-}
+.tbr-select--family { width: 108px; }
+.tbr-select--size   { width:  52px; }
 
 /* ── Popover wrapper ── */
 
@@ -135,7 +106,25 @@
   flex-shrink: 0;
 }
 
-/* ── Color icon (Palette glyph + coloured underline bar) ── */
+/* ── Office-style "A" font color icon ── */
+
+.tbr-font-color-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  line-height: 1;
+}
+
+.tbr-font-color-a {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--cap-font);
+  letter-spacing: -0.5px;
+}
+
+/* ── Shared color bar (text color + highlight) ── */
 
 .tbr-color-icon {
   display: flex;

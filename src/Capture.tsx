@@ -1,7 +1,9 @@
 import "./Capture.css";
 import { FloatingToolbar } from "./components/FloatingToolbar";
 import { IndentExt } from "./components/IndentExtension";
+import { FontSizeExtension } from "./components/FontSizeExtension";
 import { EditorToolbar, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP } from "./components/EditorToolbar";
+import FontFamily from "@tiptap/extension-font-family";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -88,10 +90,12 @@ function Capture() {
       ExtUnderline,
       TaskList,
       TaskItem.configure({ nested: true }),
-      Highlight,
+      Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TextStyle,
+      FontFamily,
+      FontSizeExtension,
       Color,
       ExtTable.configure({ resizable: false }),
       TableRow,
