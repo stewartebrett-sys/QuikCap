@@ -144,30 +144,18 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--cap-surface);
-}
-
-.db-list-header {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--cap-text-dim);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 16px 16px 8px;
-  flex-shrink: 0;
+  background: var(--cap-bg);
 }
 
 .db-controls {
-  display: flex;
-  gap: 6px;
-  padding: 0 10px 10px;
+  padding: 10px 10px 8px;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--cap-border);
 }
 
 .db-search {
-  flex: 1;
-  min-width: 0;
-  background: var(--cap-bg);
+  width: 100%;
+  background: var(--cap-surface);
   border: 1px solid var(--cap-border);
   border-radius: var(--cap-radius);
   color: var(--cap-text);
@@ -176,6 +164,7 @@
   padding: 5px 9px;
   outline: none;
   transition: border-color 120ms, box-shadow 120ms;
+  box-sizing: border-box;
 }
 
 .db-search::placeholder {
@@ -185,19 +174,7 @@
 .db-search:focus {
   border-color: rgba(124, 58, 237, 0.35);
   box-shadow: 0 0 0 2.5px rgba(124, 58, 237, 0.09);
-}
-
-.db-sort {
   background: var(--cap-bg);
-  border: 1px solid var(--cap-border);
-  border-radius: var(--cap-radius);
-  color: var(--cap-text-sub);
-  font-size: 11px;
-  font-family: var(--cap-font);
-  padding: 5px 7px;
-  outline: none;
-  cursor: pointer;
-  flex-shrink: 0;
 }
 
 /* ── Note rows ── */
@@ -205,10 +182,10 @@
 .db-cards {
   flex: 1;
   overflow-y: auto;
-  padding: 2px 5px 10px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
@@ -219,44 +196,43 @@
   border-radius: 2px;
 }
 
-/* ── Row base — intentionally lightweight ── */
+/* ── Row base: flat, full-width, separated by thin dividers ── */
 
 .db-card {
   width: 100%;
   background: transparent;
   border: none;
-  border-radius: 6px;
-  padding: 8px 11px 7px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.055);
+  border-radius: 0;
+  padding: 6px 12px 5px;
   text-align: left;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  transition: background 70ms;
+  gap: 2px;
+  transition: background 60ms;
 }
 
-/* ── Hover: barely-there background lift ── */
+.db-card:last-child {
+  border-bottom: none;
+}
+
+/* ── Hover ── */
 
 .db-card:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.035);
 }
 
-/* ── Selected: tinted row + thin left accent line ── */
+/* ── Selected: purple tint + left accent bar ── */
 
 .db-card-selected {
   background: var(--cap-purple-tint);
   box-shadow: inset 3px 0 0 var(--cap-purple);
+  border-bottom-color: transparent;
 }
 
 .db-card-selected:hover {
   background: rgba(124, 58, 237, 0.1);
-}
-
-/* ── Draft note (active in Capture) ── */
-
-.db-card-draft.db-card-selected {
-  background: var(--cap-purple-tint);
-  box-shadow: inset 3px 0 0 var(--cap-purple);
 }
 
 /* ── Row header (title + icons) ── */
@@ -269,9 +245,11 @@
   min-width: 0;
 }
 
+/* Default: regular weight — only selected row is semibold */
+
 .db-card-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 400;
   color: var(--cap-text);
   white-space: nowrap;
   overflow: hidden;
@@ -279,7 +257,11 @@
   flex: 1;
   min-width: 0;
   letter-spacing: -0.1px;
-  line-height: 1.35;
+  line-height: 1.3;
+}
+
+.db-card-selected .db-card-title {
+  font-weight: 600;
 }
 
 /* ── Metadata icons (top-right, never dominant) ── */
@@ -319,7 +301,7 @@
 .db-card-preview {
   font-size: 13px;
   color: var(--cap-text-sub);
-  line-height: 1.4;
+  line-height: 1.38;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -327,7 +309,7 @@
   word-break: break-word;
 }
 
-/* ── Footer: timestamp, right-aligned, never competes ── */
+/* ── Footer: timestamp right-aligned ── */
 
 .db-card-footer {
   display: flex;
@@ -344,7 +326,7 @@
 .db-empty {
   font-size: 13px;
   color: var(--cap-text-dim);
-  padding: 28px 4px;
+  padding: 28px 12px;
   text-align: center;
   line-height: 1.5;
 }

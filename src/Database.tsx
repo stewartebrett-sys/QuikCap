@@ -183,18 +183,14 @@ function Database() {
 
         {/* Notes list */}
         <div className="db-list">
-          <div className="db-list-header">Notes</div>
           <div className="db-controls">
             <input
               className="db-search"
               type="text"
-              placeholder="Search..."
+              placeholder="Search notes..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <select className="db-sort">
-              <option>Last updated</option>
-            </select>
           </div>
 
           <div className="db-cards">
