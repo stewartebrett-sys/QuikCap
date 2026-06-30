@@ -140,7 +140,7 @@
 .db-list {
   width: 272px;
   flex-shrink: 0;
-  border-right: 1px solid var(--cap-border);
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -150,7 +150,7 @@
 .db-controls {
   padding: 10px 10px 8px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--cap-border);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .db-search {
@@ -221,14 +221,14 @@
   background: rgba(0, 0, 0, 0.04);
 }
 
-/* ── Selected: light lavender fill only, no accent bar ── */
+/* ── Selected: very light lavender fill, understated ── */
 
 .db-card-selected {
-  background: rgba(124, 58, 237, 0.07);
+  background: rgba(124, 58, 237, 0.055);
 }
 
 .db-card-selected:hover {
-  background: rgba(124, 58, 237, 0.1);
+  background: rgba(124, 58, 237, 0.08);
 }
 
 /* ── Title: regular weight by default, semibold when selected ── */

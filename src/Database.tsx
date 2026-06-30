@@ -205,7 +205,6 @@ function Database() {
                 <span className="db-card-title">{firstLine(draft)}</span>
                 <div className="db-card-meta">
                   <span className="db-active-dot" title="Active in Capture" />
-                  <span className="db-card-date">Active</span>
                 </div>
               </button>
             )}

@@ -41,11 +41,12 @@
   min-height: 100%;
 }
 
-/* ── Document layout: wide margins, 12pt body, system fonts ── */
+/* ── Document layout: Word-style margins, max reading width ── */
 
 .re-editor-area .cap-prose {
   font-size: calc(16px * var(--editor-zoom, 1));
-  padding: 48px 96px 64px;
+  padding: 48px 56px 64px;
+  max-width: 960px;
 }
 
 /* ── Typography overrides for the document context ── */
