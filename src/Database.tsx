@@ -98,7 +98,7 @@ function smartDate(ms: number): string {
   if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
 
   const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
-  if (diffDays < 7) return date.toLocaleDateString([], { weekday: "short" });
+  if (diffDays < 7) return date.toLocaleDateString([], { weekday: "long" });
   if (date.getFullYear() === now.getFullYear()) {
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
   }
@@ -558,12 +558,10 @@ function Database() {
                   className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
                   onClick={() => selectNote(null)}
                 >
-                  <div className="db-card-body">
-                    <span className="db-card-title">{firstLine(draft)}</span>
-                    <div className="db-card-meta">
-                      <span className="db-active-dot" title="Active in Capture" />
-                      <span className="db-card-date">Capture</span>
-                    </div>
+                  <span className="db-card-title">{firstLine(draft)}</span>
+                  <div className="db-card-meta">
+                    <span className="db-active-dot" title="Active in Capture" />
+                    <span className="db-card-date">Capture</span>
                   </div>
                 </button>
               )}
@@ -577,13 +575,11 @@ function Database() {
                   onClick={() => selectNote(note.id)}
                   onContextMenu={(e) => handleContextMenu(e, note)}
                 >
-                  <div className="db-card-body">
-                    <span className="db-card-title">{firstLine(note.text)}</span>
-                    <div className="db-card-meta">
-                      {note.pinned && <Pin size={9} strokeWidth={2.5} className="db-icon-pin" />}
-                      {note.follow_up_date && <Calendar size={9} strokeWidth={2.5} className="db-icon-cal" />}
-                      <span className="db-card-date">{smartDate(note.updated_at)}</span>
-                    </div>
+                  <span className="db-card-title">{firstLine(note.text)}</span>
+                  <div className="db-card-meta">
+                    {note.pinned && <Pin size={9} strokeWidth={2.5} className="db-icon-pin" />}
+                    {note.follow_up_date && <Calendar size={9} strokeWidth={2.5} className="db-icon-cal" />}
+                    <span className="db-card-date">{smartDate(note.updated_at)}</span>
                   </div>
                 </button>
               ))}
