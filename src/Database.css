@@ -451,48 +451,139 @@
 .db-ctx-menu {
   position: fixed;
   z-index: 9000;
-  width: 172px;
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 2px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.13), 0 1px 4px rgba(0, 0, 0, 0.06);
-  padding: 4px;
+  padding: 3px;
   user-select: none;
 }
 
 .db-ctx-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 5px 10px;
   background: none;
   border: none;
   border-radius: 0;
   text-align: left;
   font-family: var(--cap-font);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--cap-text);
   cursor: pointer;
   line-height: 1.3;
-  transition: background 60ms;
+  transition: background 50ms;
+  white-space: nowrap;
 }
 
 .db-ctx-item:hover {
   background: rgba(0, 0, 0, 0.05);
 }
 
-.db-ctx-item--danger {
-  color: #c0392b;
+.db-ctx-item--danger       { color: #c0392b; }
+.db-ctx-item--danger:hover { background: rgba(192, 57, 43, 0.06); }
+
+.db-ctx-item--disabled {
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
 }
 
-.db-ctx-item--danger:hover {
-  background: rgba(192, 57, 43, 0.06);
+.db-ctx-item-label {
+  flex: 1;
+}
+
+.db-ctx-item-shortcut {
+  font-size: 11px;
+  color: var(--cap-text-dim);
+  flex-shrink: 0;
+  letter-spacing: 0;
 }
 
 .db-ctx-sep {
   height: 1px;
   background: rgba(0, 0, 0, 0.07);
   margin: 3px 0;
+}
+
+/* ════════════════════════════════════════════════════════
+   DELETE CONFIRMATION DIALOG
+   ════════════════════════════════════════════════════════ */
+
+.db-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.db-dialog {
+  position: fixed;
+  z-index: 9501;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 320px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 2px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 20px 20px 16px;
+  user-select: none;
+}
+
+.db-dialog-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--cap-text);
+  margin-bottom: 8px;
+}
+
+.db-dialog-body {
+  font-size: 12.5px;
+  color: var(--cap-text-sub);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.db-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.db-dialog-btn {
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0;
+  background: var(--cap-bg);
+  font-family: var(--cap-font);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cap-text);
+  cursor: pointer;
+  transition: background 80ms, border-color 80ms;
+}
+
+.db-dialog-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.db-dialog-btn--danger {
+  background: #c0392b;
+  border-color: #a93226;
+  color: #ffffff;
+}
+
+.db-dialog-btn--danger:hover {
+  background: #a93226;
+  border-color: #922b21;
 }
 
 /* ════════════════════════════════════════════════════════
