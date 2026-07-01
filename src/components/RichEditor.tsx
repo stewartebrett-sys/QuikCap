@@ -30,6 +30,7 @@ import { IndentExt } from "./IndentExtension";
 import { FontSizeExtension } from "./FontSizeExtension";
 import { EditorToolbar, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP } from "./EditorToolbar";
 import { FloatingToolbar } from "./FloatingToolbar";
+import { SearchHighlightExtension, searchHighlightKey } from "./SearchHighlightExtension";
 
 // ─── Public API (forwarded ref) ───────────────────────────
 
@@ -57,6 +58,8 @@ interface Props {
   onEditorReady?: (editor: Editor) => void;
   // Called whenever zoom changes internally (Ctrl+Wheel) so external toolbar stays in sync
   onZoomChange?:  (zoom: number) => void;
+  // Live search query — drives transient decorations, does not modify the document
+  searchQuery?:   string;
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -65,7 +68,7 @@ const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
   {
     onChange, onEscape, onCtrlEnter,
     disabled = false, placeholder = "Start writing…",
-    hideToolbar = false, onEditorReady, onZoomChange,
+    hideToolbar = false, onEditorReady, onZoomChange, searchQuery,
   },
   ref,
 ) {
@@ -111,6 +114,7 @@ const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
       ExtImage.configure({ inline: false }),
       Placeholder.configure({ placeholder }),
       IndentExt,
+      SearchHighlightExtension,
     ],
     editable: !disabled,
     autofocus: false,
@@ -212,6 +216,14 @@ const RichEditor = forwardRef<RichEditorHandle, Props>(function RichEditor(
   useEffect(() => {
     editor?.setEditable(!disabled);
   }, [editor, disabled]);
+
+  // Push search query into the highlight decoration plugin
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(searchHighlightKey, { query: searchQuery ?? "" })
+    );
+  }, [editor, searchQuery]);
 
   // Ctrl+Wheel → zoom editor text; notify parent so external toolbar syncs
   useEffect(() => {

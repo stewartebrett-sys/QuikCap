@@ -1,11 +1,12 @@
 import "./Database.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Pin, Calendar, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 import RichEditor, { RichEditorHandle } from "./components/RichEditor";
 import { EditorToolbar } from "./components/EditorToolbar";
+import { searchNotes, type SearchableNote } from "./search";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -431,12 +432,32 @@ function Database() {
     handleNoteRemoved(id, remaining);
   };
 
-  // ── Filtered + sorted note list ───────────────────────
+  // ── Search — memoized index + ranked results ──────────
+  // noteIndex re-computes only when notes state changes.
+  // filteredNotes re-computes when notes or query changes.
 
-  const query = search.toLowerCase();
-  const showDraft = !!(draft.trim() && (!query || htmlToPlain(draft).toLowerCase().includes(query)));
-  const filteredNotes = sortNotes(
-    notes.filter((n) => !query || htmlToPlain(n.text).toLowerCase().includes(query))
+  const query = search.trim();
+
+  const noteIndex = useMemo<SearchableNote[]>(
+    () => notes.map((n) => ({
+      id: n.id,
+      title: firstLine(n.text),
+      body: htmlToPlain(n.text),
+      updated_at: n.updated_at,
+    })),
+    [notes]
+  );
+
+  const filteredNotes: Note[] = useMemo(() => {
+    if (!query) return sortNotes(notes);
+    const ids = searchNotes(noteIndex, query);
+    const map = new Map(notes.map((n) => [n.id, n]));
+    return ids.map((id) => map.get(id)).filter(Boolean) as Note[];
+  }, [notes, noteIndex, query]);
+
+  const showDraft = !!(
+    draft.trim() &&
+    (!query || htmlToPlain(draft).toLowerCase().includes(query.toLowerCase()))
   );
 
   const editorDisabled = selectedId === undefined;
@@ -562,7 +583,7 @@ function Database() {
                   className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
                   onClick={() => selectNote(null)}
                 >
-                  <span className="db-card-title">{firstLine(draft)}</span>
+                  <span className="db-card-title"><HighlightedText text={firstLine(draft)} query={query} /></span>
                   <div className="db-card-meta">
                     <span className="db-active-dot" title="Active in Capture" />
                     <span className="db-card-date">Capture</span>
@@ -579,7 +600,7 @@ function Database() {
                   onClick={() => selectNote(note.id)}
                   onContextMenu={(e) => handleContextMenu(e, note)}
                 >
-                  <span className="db-card-title">{firstLine(note.text)}</span>
+                  <span className="db-card-title"><HighlightedText text={firstLine(note.text)} query={query} /></span>
                   <div className="db-card-meta">
                     {note.pinned && <Pin size={9} strokeWidth={2.5} className="db-icon-pin" />}
                     {note.follow_up_date && <Calendar size={9} strokeWidth={2.5} className="db-icon-cal" />}
@@ -590,7 +611,12 @@ function Database() {
 
               {!showDraft && filteredNotes.length === 0 && (
                 <div className="db-empty">
-                  {search ? "No notes match." : "No saved notes yet."}
+                  {query ? (
+                    <>
+                      <div className="db-empty-title">No notes found</div>
+                      <div className="db-empty-hint">Try searching titles or note contents.</div>
+                    </>
+                  ) : "No saved notes yet."}
                 </div>
               )}
             </div>
@@ -618,6 +644,7 @@ function Database() {
               onEditorReady={(e) => setDbEditor(e)}
               onZoomChange={(z) => setDbZoom(z)}
               onEscape={() => listRef.current?.focus()}
+              searchQuery={query}
             />
           </div>
 
@@ -664,6 +691,30 @@ function Database() {
 
     </div>
   );
+}
+
+// ─── Inline text highlighter ─────────────────────────────
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const lq = query.toLowerCase();
+  const lt = text.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  let idx = lt.indexOf(lq);
+  while (idx !== -1) {
+    if (idx > last) parts.push(text.slice(last, idx));
+    parts.push(
+      <mark key={key++} className="search-highlight">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+    );
+    last = idx + query.length;
+    idx = lt.indexOf(lq, last);
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return <>{parts}</>;
 }
 
 // ─── Inline calendar picker for follow-up dates ──────────
