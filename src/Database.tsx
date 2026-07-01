@@ -682,15 +682,15 @@ function Database() {
         </div>
       </nav>
 
-      {/* ── Workspace ── */}
-      <div className="db-workspace">
-        {dbEditor && !editorDisabled && !isArchiveView && (
-          <div className="db-toolbar-surface">
-            <EditorToolbar editor={dbEditor} zoom={dbZoom} onZoomChange={handleZoomChange} />
-          </div>
-        )}
+      {/* ── Toolbar — full width, flush below topnav ── */}
+      {dbEditor && !editorDisabled && !isArchiveView && (
+        <div className="db-toolbar-row">
+          <EditorToolbar editor={dbEditor} zoom={dbZoom} onZoomChange={handleZoomChange} />
+        </div>
+      )}
 
-        <div className="db-main-surface">
+      {/* ── Body: list + editor side by side ── */}
+      <div className="db-body">
 
           {/* ── Notes list pane ── */}
           <div className="db-list">
@@ -705,6 +705,11 @@ function Database() {
                   <Plus size={14} strokeWidth={2} />
                 </button>
               )}
+            </div>
+
+            <div className="db-list-cols">
+              <span className="db-list-col-title">Title</span>
+              <span className="db-list-col-date">Updated</span>
             </div>
 
             <div
@@ -789,7 +794,6 @@ function Database() {
             />
           </div>
 
-        </div>
       </div>
 
       {/* ── View selector dropdown ── */}
