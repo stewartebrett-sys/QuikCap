@@ -2,7 +2,7 @@ import "./Database.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Pin, Calendar, Plus, ChevronLeft, ChevronRight, ArchiveRestore } from "lucide-react";
+import { Pin, Calendar, Plus, ChevronDown, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 import RichEditor, { RichEditorHandle } from "./components/RichEditor";
 import { EditorToolbar } from "./components/EditorToolbar";
@@ -20,7 +20,14 @@ interface Note {
   status: string;
 }
 
-// Reversible note-level operations for the undo stack
+type ActiveView =
+  | "all"
+  | "pinned"
+  | "follow-up"
+  | "archived"
+  | "recently-edited"
+  | "recently-created";
+
 type NoteOp =
   | { type: "archive";    note: Note }
   | { type: "pin";        id: string; was: boolean }
@@ -48,42 +55,46 @@ const MONTH_NAMES = [
 ];
 
 const CTX_MENU_W = 180;
-const CTX_MENU_H = 250;
-const CAL_W = 220;
-const CAL_H = 250;
-// Sentinel stored in session.txt when the draft is selected
+const CTX_MENU_H = 260;
+const CAL_W      = 220;
+const CAL_H      = 250;
 const SESSION_DRAFT = "__draft__";
+const AUTOSAVE_MS   = 500;
+const MAX_UNDO      = 50;
+
+const VIEW_LABELS: Record<ActiveView, string> = {
+  "all":              "All Notes",
+  "pinned":           "Pinned",
+  "follow-up":        "Follow Up",
+  "archived":         "Archived",
+  "recently-edited":  "Recently Edited",
+  "recently-created": "Recently Created",
+};
 
 // ─── Utilities ───────────────────────────────────────────
 
 function htmlToPlain(html: string): string {
   return html
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<\/li>/gi, "\n")
-    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n").replace(/<\/li>/gi, "\n").replace(/<br\s*\/?>/gi, "\n")
     .replace(/<[^>]*>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ")
     .trim();
 }
 
 function firstLine(html: string): string {
-  const plain = htmlToPlain(html);
-  return plain.split("\n").find((l) => l.trim()) ?? "New Note";
+  return htmlToPlain(html).split("\n").find((l) => l.trim()) ?? "New Note";
 }
 
 function todayISO(): string {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
 function toISODate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
 }
 
-// Custom sort: pinned → overdue follow-ups → updatedAt desc
+// Default sort: pinned → overdue follow-ups → updatedAt desc
 function sortNotes(notes: Note[]): Note[] {
   const today = todayISO();
   return [...notes].sort((a, b) => {
@@ -97,30 +108,21 @@ function sortNotes(notes: Note[]): Note[] {
 
 function smartDate(ms: number): string {
   const date = new Date(ms);
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) {
+  const now  = new Date();
+  if (date.toDateString() === now.toDateString())
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  }
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
   const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
   if (diffDays < 7) return date.toLocaleDateString([], { weekday: "long" });
-  if (date.getFullYear() === now.getFullYear()) {
+  if (date.getFullYear() === now.getFullYear())
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
-  }
   return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
 function clampMenu(x: number, y: number, w: number, h: number) {
-  return {
-    x: Math.min(x, window.innerWidth - w - 8),
-    y: Math.min(y, window.innerHeight - h - 8),
-  };
+  return { x: Math.min(x, window.innerWidth - w - 8), y: Math.min(y, window.innerHeight - h - 8) };
 }
-
-const AUTOSAVE_MS = 500;
-const MAX_UNDO = 50;
 
 // ─── Component ───────────────────────────────────────────
 
@@ -129,7 +131,6 @@ function Database() {
 
   const [notes, setNotes]           = useState<Note[]>([]);
   const [draft, setDraft]           = useState("");
-  // undefined = nothing selected; null = draft; string = saved note id
   const [selectedId, setSelectedId] = useState<string | null | undefined>(undefined);
   const [search, setSearch]         = useState("");
   const [dbEditor, setDbEditor]     = useState<Editor | null>(null);
@@ -137,20 +138,22 @@ function Database() {
   const [ctxMenu, setCtxMenu]       = useState<CtxMenu | null>(null);
   const [followUpPicker, setFollowUpPicker] = useState<FollowUpPicker | null>(null);
 
-  // ── Sprint 9 state ────────────────────────────────────
-  const [viewMode, setViewMode]         = useState<"notes" | "archived">("notes");
-  const [archivedNotes, setArchivedNotes] = useState<Note[]>([]);
-  const [undoStack, setUndoStack]       = useState<NoteOp[]>([]);
+  const [activeView, setActiveView]         = useState<ActiveView>("all");
+  const [archivedNotes, setArchivedNotes]   = useState<Note[]>([]);
+  const [undoStack, setUndoStack]           = useState<NoteOp[]>([]);
+  const [viewDropdownOpen, setViewDropdownOpen] = useState(false);
+  const [viewDropdownRect, setViewDropdownRect] = useState<{ left: number; top: number; width: number } | null>(null);
 
-  const saveTimer      = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const editorRef      = useRef<RichEditorHandle>(null);
-  const editorHtmlRef  = useRef<string>("");
-  const searchRef      = useRef<HTMLInputElement>(null);
-  const listRef        = useRef<HTMLDivElement>(null);
-  const cardRefs       = useRef<Map<string | null, HTMLButtonElement>>(new Map());
-  const createNoteRef  = useRef<() => void>(() => {});
-  const deleteNoteRef  = useRef<() => void>(() => {});
-  const undoRef        = useRef<() => void>(() => {});
+  const saveTimer     = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const editorRef     = useRef<RichEditorHandle>(null);
+  const editorHtmlRef = useRef<string>("");
+  const searchRef     = useRef<HTMLInputElement>(null);
+  const listRef       = useRef<HTMLDivElement>(null);
+  const listHeaderRef = useRef<HTMLDivElement>(null);
+  const cardRefs      = useRef<Map<string | null, HTMLButtonElement>>(new Map());
+  const createNoteRef = useRef<() => void>(() => {});
+  const deleteNoteRef = useRef<() => void>(() => {});
+  const undoRef       = useRef<() => void>(() => {});
 
   // ── Initial load + session restore ───────────────────
 
@@ -164,7 +167,6 @@ function Database() {
       setNotes(sorted);
       setDraft(fetchedDraft);
 
-      // Session restore: try to reopen the last-used note
       if (sessionId === SESSION_DRAFT && fetchedDraft.trim()) {
         setSelectedId(null);
         editorHtmlRef.current = fetchedDraft;
@@ -179,7 +181,6 @@ function Database() {
         }
       }
 
-      // Fall back to default behaviour
       if (fetchedDraft.trim() && !sessionId) {
         setSelectedId(null);
         editorHtmlRef.current = fetchedDraft;
@@ -197,75 +198,67 @@ function Database() {
   // ── Refresh on window focus ───────────────────────────
 
   useEffect(() => {
-    const onFocus = () => {
+    const onFocus = () =>
       Promise.all([invoke<Note[]>("list_notes"), invoke<string>("load_draft")]).then(
-        ([freshNotes, freshDraft]) => {
-          setNotes(sortNotes(freshNotes));
-          setDraft(freshDraft);
-        }
+        ([freshNotes, freshDraft]) => { setNotes(sortNotes(freshNotes)); setDraft(freshDraft); }
       );
-    };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   // ── Global keyboard shortcuts ─────────────────────────
-  // Ctrl+Z outside the editor fires the app-level undo stack.
-  // Inside the editor Tiptap handles Ctrl+Z natively.
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const inEditor = document.activeElement?.getAttribute("contenteditable") === "true";
-
       if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey && !inEditor) {
-        e.preventDefault();
-        undoRef.current();
-        return;
+        e.preventDefault(); undoRef.current(); return;
       }
       if (e.key === "n" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        createNoteRef.current();
-        return;
+        e.preventDefault(); createNoteRef.current(); return;
       }
       if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        searchRef.current?.focus();
-        searchRef.current?.select();
-        return;
+        e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select(); return;
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // ── Close context menu / follow-up picker on Esc ─────
+  // ── Close overlays on Esc ─────────────────────────────
 
   useEffect(() => {
-    if (!ctxMenu && !followUpPicker) return;
+    if (!ctxMenu && !followUpPicker && !viewDropdownOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        setCtxMenu(null);
-        setFollowUpPicker(null);
+        setCtxMenu(null); setFollowUpPicker(null); setViewDropdownOpen(false);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [ctxMenu, followUpPicker]);
+  }, [ctxMenu, followUpPicker, viewDropdownOpen]);
 
   // ── Scroll selected card into view ────────────────────
 
   useEffect(() => {
     if (selectedId === undefined) return;
-    const el = cardRefs.current.get(selectedId as string | null);
-    el?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    cardRefs.current.get(selectedId as string | null)?.scrollIntoView({ block: "nearest", behavior: "auto" });
   }, [selectedId]);
 
-  // ── Save / session helpers ────────────────────────────
+  // ── Load archived notes when switching to that view ───
+
+  useEffect(() => {
+    if (activeView === "archived") {
+      invoke<Note[]>("list_archived_notes").then(setArchivedNotes).catch(() => {});
+    }
+  }, [activeView]);
+
+  // ── Session + save helpers ────────────────────────────
 
   const persistSession = (id: string | null | undefined) => {
-    const sessionId = id === null ? SESSION_DRAFT : (id ?? "");
-    invoke("save_session", { noteId: sessionId || null }).catch(console.error);
+    const sid = id === null ? SESSION_DRAFT : (id ?? "");
+    invoke("save_session", { noteId: sid || null }).catch(console.error);
   };
 
   const flushSave = () => {
@@ -275,16 +268,20 @@ function Database() {
       invoke("save_draft", { text: html }).catch(console.error);
     } else if (typeof selectedId === "string") {
       invoke("update_note", { id: selectedId, text: html }).catch(console.error);
-      setNotes((prev) =>
-        prev.map((n) => n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n)
-      );
+      setNotes((prev) => prev.map((n) => n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n));
     }
   };
 
+  // selectNote: check both active notes and archivedNotes for content
   const selectNote = (id: string | null) => {
     flushSave();
     setSelectedId(id);
-    const content = id === null ? draft : (notes.find((n) => n.id === id)?.text ?? "");
+    let content = "";
+    if (id === null) {
+      content = draft;
+    } else {
+      content = (notes.find((n) => n.id === id) ?? archivedNotes.find((n) => n.id === id))?.text ?? "";
+    }
     editorHtmlRef.current = content;
     editorRef.current?.setContent(content);
     editorRef.current?.focus();
@@ -294,10 +291,31 @@ function Database() {
   const selectNoteKeyboard = (id: string | null) => {
     flushSave();
     setSelectedId(id);
-    const content = id === null ? draft : (notes.find((n) => n.id === id)?.text ?? "");
+    let content = "";
+    if (id === null) {
+      content = draft;
+    } else {
+      content = (notes.find((n) => n.id === id) ?? archivedNotes.find((n) => n.id === id))?.text ?? "";
+    }
     editorHtmlRef.current = content;
     editorRef.current?.setContent(content);
     persistSession(id);
+  };
+
+  // ── View selector ─────────────────────────────────────
+
+  const openViewDropdown = () => {
+    const rect = listHeaderRef.current?.getBoundingClientRect();
+    if (rect) {
+      setViewDropdownRect({ left: rect.left, top: rect.bottom + 2, width: rect.width });
+      setViewDropdownOpen(true);
+    }
+  };
+
+  const switchView = (view: ActiveView) => {
+    setActiveView(view);
+    setViewDropdownOpen(false);
+    setSearch("");
   };
 
   // ── Undo stack ────────────────────────────────────────
@@ -309,13 +327,18 @@ function Database() {
     if (undoStack.length === 0) return;
     const op = undoStack[undoStack.length - 1];
     setUndoStack((prev) => prev.slice(0, -1));
-
     try {
       switch (op.type) {
         case "archive": {
           await invoke("restore_note", { id: op.note.id });
-          setNotes((prev) => sortNotes([{ ...op.note, status: "active" }, ...prev]));
-          selectNote(op.note.id);
+          const restoredNote = { ...op.note, status: "active" };
+          setNotes((prev) => sortNotes([restoredNote, ...prev]));
+          setActiveView("all");
+          setSelectedId(restoredNote.id);
+          editorHtmlRef.current = restoredNote.text;
+          editorRef.current?.setContent(restoredNote.text);
+          editorRef.current?.focus();
+          persistSession(restoredNote.id);
           break;
         }
         case "pin": {
@@ -325,9 +348,7 @@ function Database() {
         }
         case "follow_up": {
           await invoke("set_follow_up", { id: op.id, date: op.was ?? null });
-          setNotes((prev) => sortNotes(prev.map((n) =>
-            n.id === op.id ? { ...n, follow_up_date: op.was } : n
-          )));
+          setNotes((prev) => sortNotes(prev.map((n) => n.id === op.id ? { ...n, follow_up_date: op.was } : n)));
           break;
         }
         case "duplicate": {
@@ -363,7 +384,7 @@ function Database() {
 
   createNoteRef.current = createNewNote;
 
-  // ── Remove from list (shared by archive + delete) ─────
+  // ── Remove note from list ─────────────────────────────
 
   const handleNoteRemoved = (id: string, remaining: Note[]) => {
     if (selectedId !== id) return;
@@ -378,7 +399,7 @@ function Database() {
     }
   };
 
-  // ── Delete (archive) — keyboard shortcut ──────────────
+  // ── Delete/archive — keyboard shortcut ────────────────
 
   const deleteSelectedNote = async () => {
     if (typeof selectedId !== "string") return;
@@ -386,31 +407,20 @@ function Database() {
     clearTimeout(saveTimer.current);
     try { await invoke("archive_note", { id: selectedId }); }
     catch (e) { console.error(e); return; }
-
     if (noteToArchive) pushUndo({ type: "archive", note: noteToArchive });
-
     const remaining = sortNotes(notes.filter((n) => n.id !== selectedId));
     setNotes(remaining);
-
     if (remaining.length > 0) {
-      setSelectedId(remaining[0].id);
-      editorHtmlRef.current = remaining[0].text;
-      editorRef.current?.setContent(remaining[0].text);
-      listRef.current?.focus();
+      setSelectedId(remaining[0].id); editorHtmlRef.current = remaining[0].text;
+      editorRef.current?.setContent(remaining[0].text); listRef.current?.focus();
     } else if (draft.trim()) {
-      setSelectedId(null);
-      editorHtmlRef.current = draft;
-      editorRef.current?.setContent(draft);
-      listRef.current?.focus();
+      setSelectedId(null); editorHtmlRef.current = draft;
+      editorRef.current?.setContent(draft); listRef.current?.focus();
     } else {
-      setSelectedId(undefined);
-      editorHtmlRef.current = "";
-      editorRef.current?.setContent("");
+      setSelectedId(undefined); editorHtmlRef.current = ""; editorRef.current?.setContent("");
       try {
         const newNote = await invoke<Note>("create_note");
-        setNotes([newNote]);
-        setSelectedId(newNote.id);
-        listRef.current?.focus();
+        setNotes([newNote]); setSelectedId(newNote.id); listRef.current?.focus();
       } catch (e) { console.error(e); }
     }
   };
@@ -424,9 +434,7 @@ function Database() {
     if (selectedId === null) {
       setDraft(html);
     } else if (typeof selectedId === "string") {
-      setNotes((prev) =>
-        prev.map((n) => n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n)
-      );
+      setNotes((prev) => prev.map((n) => n.id === selectedId ? { ...n, text: html, updated_at: Date.now() } : n));
     }
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
@@ -435,20 +443,9 @@ function Database() {
     }, AUTOSAVE_MS);
   };
 
-  const handleZoomChange = (z: number) => {
-    setDbZoom(z);
-    editorRef.current?.setZoom(z);
-  };
+  const handleZoomChange = (z: number) => { setDbZoom(z); editorRef.current?.setZoom(z); };
 
-  // ── Archive view ──────────────────────────────────────
-
-  const switchToArchived = async () => {
-    const archived = await invoke<Note[]>("list_archived_notes").catch(() => []);
-    setArchivedNotes(archived);
-    setViewMode("archived");
-  };
-
-  const switchToNotes = () => setViewMode("notes");
+  // ── Archive restore ───────────────────────────────────
 
   const handleRestoreNote = async (id: string) => {
     setCtxMenu(null);
@@ -459,14 +456,19 @@ function Database() {
       if (restored) {
         const active = { ...restored, status: "active" };
         setNotes((prev) => sortNotes([active, ...prev]));
-        switchToNotes();
-        selectNote(id);
+        setActiveView("all");
+        setSelectedId(active.id);
+        editorHtmlRef.current = active.text;
+        editorRef.current?.setContent(active.text);
+        editorRef.current?.focus();
+        persistSession(active.id);
       }
     } catch (e) { console.error(e); }
   };
 
   const handlePermanentDeleteArchived = async (id: string) => {
     setCtxMenu(null);
+    if (!window.confirm("Permanently delete this note? This cannot be undone.")) return;
     try {
       await invoke("delete_note", { id });
       setArchivedNotes((prev) => prev.filter((n) => n.id !== id));
@@ -558,86 +560,93 @@ function Database() {
     handleNoteRemoved(id, remaining);
   };
 
-  // ── Search — memoized index + ranked results ──────────
+  // ── View-scoped filtering + search ───────────────────
+  // viewNotes: all notes that belong to the current view (before search).
+  // displayNotes: viewNotes filtered by the search query.
 
   const query = search.trim();
 
-  const noteIndex = useMemo<SearchableNote[]>(
-    () => notes.map((n) => ({
-      id: n.id,
-      title: firstLine(n.text),
-      body: htmlToPlain(n.text),
-      updated_at: n.updated_at,
-    })),
-    [notes]
+  const viewNotes: Note[] = useMemo(() => {
+    switch (activeView) {
+      case "all":
+        return sortNotes(notes);
+      case "pinned":
+        return sortNotes(notes.filter((n) => n.pinned));
+      case "follow-up":
+        return sortNotes(notes.filter((n) => !!n.follow_up_date));
+      case "archived":
+        return [...archivedNotes].sort((a, b) => b.updated_at - a.updated_at);
+      case "recently-edited":
+        return [...notes].sort((a, b) => b.updated_at - a.updated_at);
+      case "recently-created":
+        return [...notes].sort((a, b) => b.created_at - a.created_at);
+    }
+  }, [notes, archivedNotes, activeView]);
+
+  const viewIndex = useMemo<SearchableNote[]>(
+    () => viewNotes.map((n) => ({ id: n.id, title: firstLine(n.text), body: htmlToPlain(n.text), updated_at: n.updated_at })),
+    [viewNotes]
   );
 
-  const filteredNotes: Note[] = useMemo(() => {
-    if (!query) return sortNotes(notes);
-    const ids = searchNotes(noteIndex, query);
-    const map = new Map(notes.map((n) => [n.id, n]));
+  const displayNotes: Note[] = useMemo(() => {
+    if (!query) return viewNotes;
+    const ids = searchNotes(viewIndex, query);
+    const map = new Map(viewNotes.map((n) => [n.id, n]));
     return ids.map((id) => map.get(id)).filter(Boolean) as Note[];
-  }, [notes, noteIndex, query]);
+  }, [viewNotes, viewIndex, query]);
 
+  // Draft shown only in views where it makes sense
   const showDraft = !!(
     draft.trim() &&
+    (activeView === "all" || activeView === "recently-edited") &&
     (!query || htmlToPlain(draft).toLowerCase().includes(query.toLowerCase()))
   );
 
+  const isArchiveView  = activeView === "archived";
   const editorDisabled = selectedId === undefined;
 
   // ── List keyboard handler ─────────────────────────────
 
   const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (viewMode === "archived") return; // no keyboard nav in archive view
+    if (isArchiveView) return;
     const visibleIds: (string | null)[] = [
       ...(showDraft ? [null as null] : []),
-      ...filteredNotes.map((n) => n.id),
+      ...displayNotes.map((n) => n.id),
     ];
-    const currentIdx =
-      selectedId === undefined ? -1 : visibleIds.indexOf(selectedId as string | null);
-
+    const currentIdx = selectedId === undefined ? -1 : visibleIds.indexOf(selectedId as string | null);
     switch (e.key) {
       case "ArrowDown": {
         e.preventDefault();
-        const nextIdx = Math.min(currentIdx + 1, visibleIds.length - 1);
-        if (nextIdx >= 0 && nextIdx !== currentIdx) selectNoteKeyboard(visibleIds[nextIdx]);
+        const next = Math.min(currentIdx + 1, visibleIds.length - 1);
+        if (next >= 0 && next !== currentIdx) selectNoteKeyboard(visibleIds[next]);
         break;
       }
       case "ArrowUp": {
         e.preventDefault();
-        const prevIdx = Math.max(currentIdx - 1, 0);
-        if (prevIdx >= 0 && prevIdx < visibleIds.length && prevIdx !== currentIdx)
-          selectNoteKeyboard(visibleIds[prevIdx]);
+        const prev = Math.max(currentIdx - 1, 0);
+        if (prev >= 0 && prev < visibleIds.length && prev !== currentIdx) selectNoteKeyboard(visibleIds[prev]);
         break;
       }
-      case "Enter": {
+      case "Enter":
         e.preventDefault();
         if (!editorDisabled) editorRef.current?.focus();
         break;
-      }
       case "Delete":
-      case "Backspace": {
+      case "Backspace":
         e.preventDefault();
         deleteNoteRef.current();
         break;
-      }
     }
   };
-
-  // ── Search keyboard handler ───────────────────────────
 
   const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
-    if (search) { setSearch(""); }
+    if (search) setSearch("");
     else { (e.target as HTMLInputElement).blur(); editorRef.current?.focus(); }
   };
 
   // ── Render ────────────────────────────────────────────
-
-  const isArchiveView = viewMode === "archived";
-  const displayNotes = isArchiveView ? archivedNotes : filteredNotes;
 
   return (
     <div className="db">
@@ -680,53 +689,32 @@ function Database() {
           {/* ── Notes list pane ── */}
           <div className="db-list">
 
-            {/* List header — changes between Notes and Archived views */}
-            <div className="db-list-header">
-              {isArchiveView ? (
-                <>
-                  <button className="db-list-back-btn" onClick={switchToNotes} title="Back to Notes">
-                    <ChevronLeft size={13} strokeWidth={2.5} />
-                  </button>
-                  <span className="db-list-label">Archived</span>
-                </>
-              ) : (
-                <>
-                  <span className="db-list-label">Notes</span>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    <button
-                      className="db-list-add-btn"
-                      onClick={switchToArchived}
-                      title="View archived notes"
-                    >
-                      <ArchiveRestore size={13} strokeWidth={2} />
-                    </button>
-                    <button
-                      className="db-list-add-btn"
-                      onClick={createNewNote}
-                      title="New note (Ctrl+N)"
-                    >
-                      <Plus size={14} strokeWidth={2} />
-                    </button>
-                  </div>
-                </>
+            {/* Header: view selector trigger + new note button */}
+            <div className="db-list-header" ref={listHeaderRef}>
+              <button className="db-view-trigger" onClick={openViewDropdown}>
+                <span>{VIEW_LABELS[activeView]}</span>
+                <ChevronDown size={11} strokeWidth={2.5} className="db-view-chevron" />
+              </button>
+              {!isArchiveView && (
+                <button className="db-list-add-btn" onClick={createNewNote} title="New note (Ctrl+N)">
+                  <Plus size={14} strokeWidth={2} />
+                </button>
               )}
             </div>
 
             {/* Scrollable card list */}
-            <div
-              className="db-cards"
-              tabIndex={0}
-              ref={listRef}
-              onKeyDown={onListKeyDown}
-            >
-              {/* Draft (notes view only) */}
-              {!isArchiveView && showDraft && (
+            <div className="db-cards" tabIndex={0} ref={listRef} onKeyDown={onListKeyDown}>
+
+              {/* Draft card (All Notes + Recently Edited only) */}
+              {showDraft && (
                 <button
                   ref={(el) => { if (el) cardRefs.current.set(null, el); else cardRefs.current.delete(null); }}
                   className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
                   onClick={() => selectNote(null)}
                 >
-                  <span className="db-card-title"><HighlightedText text={firstLine(draft)} query={query} /></span>
+                  <span className="db-card-title">
+                    <HighlightedText text={firstLine(draft)} query={query} />
+                  </span>
                   <div className="db-card-meta">
                     <span className="db-active-dot" title="Active in Capture" />
                     <span className="db-card-date">Capture</span>
@@ -734,7 +722,7 @@ function Database() {
                 </button>
               )}
 
-              {/* Note rows (shared between notes and archive views) */}
+              {/* Note rows */}
               {displayNotes.map((note) => (
                 <button
                   key={note.id}
@@ -762,20 +750,21 @@ function Database() {
               ))}
 
               {/* Empty states */}
-              {!isArchiveView && !showDraft && filteredNotes.length === 0 && (
+              {!showDraft && displayNotes.length === 0 && (
                 <div className="db-empty">
                   {query ? (
                     <>
                       <div className="db-empty-title">No notes found</div>
                       <div className="db-empty-hint">Try searching titles or note contents.</div>
                     </>
-                  ) : "No saved notes yet."}
-                </div>
-              )}
-              {isArchiveView && archivedNotes.length === 0 && (
-                <div className="db-empty">
-                  <div className="db-empty-title">Archive is empty</div>
-                  <div className="db-empty-hint">Archived notes appear here.</div>
+                  ) : isArchiveView ? (
+                    <>
+                      <div className="db-empty-title">Archive is empty</div>
+                      <div className="db-empty-hint">Archived notes appear here.</div>
+                    </>
+                  ) : (
+                    <div className="db-empty-title">No notes in this view.</div>
+                  )}
                 </div>
               )}
             </div>
@@ -788,7 +777,7 @@ function Database() {
                 ref={searchRef}
                 className="db-search"
                 type="text"
-                placeholder="Search notes..."
+                placeholder={`Search ${VIEW_LABELS[activeView].toLowerCase()}...`}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={onSearchKeyDown}
@@ -809,16 +798,49 @@ function Database() {
         </div>
       </div>
 
+      {/* ── View selector dropdown ── */}
+      {viewDropdownOpen && viewDropdownRect && (
+        <>
+          <div className="db-overlay" onClick={() => setViewDropdownOpen(false)} />
+          <div
+            className="db-view-dropdown"
+            style={{ left: viewDropdownRect.left, top: viewDropdownRect.top, width: viewDropdownRect.width }}
+          >
+            {(["all", "pinned", "follow-up", "archived"] as ActiveView[]).map((v) => (
+              <button
+                key={v}
+                className={`db-view-item${activeView === v ? " db-view-item--active" : ""}`}
+                onClick={() => switchView(v)}
+              >
+                <span>{VIEW_LABELS[v]}</span>
+                {activeView === v && <Check size={11} strokeWidth={2.5} />}
+              </button>
+            ))}
+            <div className="db-ctx-sep" style={{ margin: "3px 4px" }} />
+            {(["recently-edited", "recently-created"] as ActiveView[]).map((v) => (
+              <button
+                key={v}
+                className={`db-view-item${activeView === v ? " db-view-item--active" : ""}`}
+                onClick={() => switchView(v)}
+              >
+                <span>{VIEW_LABELS[v]}</span>
+                {activeView === v && <Check size={11} strokeWidth={2.5} />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       {/* ── Context menu ── */}
       {ctxMenu && (
         <>
           <div className="db-overlay" onClick={() => setCtxMenu(null)} />
           <div className="db-ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
             {ctxMenu.note.status === "archived" ? (
-              /* Archive-view menu */
               <>
+                <button className="db-ctx-item" onClick={ctxOpen}>Open</button>
                 <button className="db-ctx-item" onClick={() => handleRestoreNote(ctxMenu.note.id)}>
-                  Restore
+                  Restore to All Notes
                 </button>
                 <div className="db-ctx-sep" />
                 <button className="db-ctx-item db-ctx-item--danger" onClick={() => handlePermanentDeleteArchived(ctxMenu.note.id)}>
@@ -826,7 +848,6 @@ function Database() {
                 </button>
               </>
             ) : (
-              /* Normal menu */
               <>
                 <button className="db-ctx-item" onClick={ctxOpen}>Open</button>
                 <div className="db-ctx-sep" />
@@ -868,19 +889,12 @@ function Database() {
 
 function HighlightedText({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
-  const lq = query.toLowerCase();
-  const lt = text.toLowerCase();
+  const lq = query.toLowerCase(), lt = text.toLowerCase();
   const parts: React.ReactNode[] = [];
-  let last = 0;
-  let key = 0;
-  let idx = lt.indexOf(lq);
+  let last = 0, key = 0, idx = lt.indexOf(lq);
   while (idx !== -1) {
     if (idx > last) parts.push(text.slice(last, idx));
-    parts.push(
-      <mark key={key++} className="search-highlight">
-        {text.slice(idx, idx + query.length)}
-      </mark>
-    );
+    parts.push(<mark key={key++} className="search-highlight">{text.slice(idx, idx + query.length)}</mark>);
     last = idx + query.length;
     idx = lt.indexOf(lq, last);
   }
@@ -888,11 +902,10 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   return <>{parts}</>;
 }
 
-// ─── Inline calendar picker for follow-up dates ──────────
+// ─── Follow-up calendar ──────────────────────────────────
 
 interface DbCalendarProps {
-  x: number;
-  y: number;
+  x: number; y: number;
   currentDate: string | undefined;
   onSelect: (date: Date | null) => void;
   onClose: () => void;
@@ -901,27 +914,17 @@ interface DbCalendarProps {
 function DbCalendarPicker({ x, y, currentDate, onSelect, onClose }: DbCalendarProps) {
   const selected = currentDate ? new Date(currentDate + "T12:00:00") : null;
   const today = new Date();
-  const [viewYear, setViewYear] = useState(selected?.getFullYear() ?? today.getFullYear());
+  const [viewYear, setViewYear]   = useState(selected?.getFullYear() ?? today.getFullYear());
   const [viewMonth, setViewMonth] = useState(selected?.getMonth() ?? today.getMonth());
 
-  const prevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
-    else setViewMonth((m) => m - 1);
-  };
-  const nextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
-    else setViewMonth((m) => m + 1);
-  };
+  const prevMonth = () => viewMonth === 0 ? (setViewMonth(11), setViewYear((y) => y - 1)) : setViewMonth((m) => m - 1);
+  const nextMonth = () => viewMonth === 11 ? (setViewMonth(0), setViewYear((y) => y + 1)) : setViewMonth((m) => m + 1);
 
   const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const daysInMonth    = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const isToday = (d: number) => today.getFullYear() === viewYear && today.getMonth() === viewMonth && today.getDate() === d;
+  const isSelected = (d: number) => !!selected && selected.getFullYear() === viewYear && selected.getMonth() === viewMonth && selected.getDate() === d;
 
-  const isToday = (d: number) =>
-    today.getFullYear() === viewYear && today.getMonth() === viewMonth && today.getDate() === d;
-  const isSelected = (d: number) =>
-    !!selected && selected.getFullYear() === viewYear && selected.getMonth() === viewMonth && selected.getDate() === d;
-
-  const DAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
   const cells: (number | null)[] = [
     ...Array(firstDayOfWeek).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
@@ -939,18 +942,14 @@ function DbCalendarPicker({ x, y, currentDate, onSelect, onClose }: DbCalendarPr
         </button>
       </div>
       <div className="db-cal-grid">
-        {DAY_LABELS.map((d) => <div key={d} className="db-cal-dow">{d}</div>)}
+        {["Su","Mo","Tu","We","Th","Fr","Sa"].map((d) => <div key={d} className="db-cal-dow">{d}</div>)}
         {cells.map((d, i) =>
-          d === null ? (
-            <div key={`e-${i}`} />
-          ) : (
+          d === null ? <div key={`e-${i}`} /> : (
             <button
               key={`d-${i}`}
               className={["db-cal-day", isToday(d) ? "db-cal-day--today" : "", isSelected(d) ? "db-cal-day--selected" : ""].filter(Boolean).join(" ")}
               onMouseDown={(e) => { e.preventDefault(); onSelect(new Date(viewYear, viewMonth, d)); onClose(); }}
-            >
-              {d}
-            </button>
+            >{d}</button>
           )
         )}
       </div>
