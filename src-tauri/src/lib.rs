@@ -165,6 +165,58 @@ fn update_note(app: tauri::AppHandle, id: String, text: String) -> Result<(), St
     save_notes(&app, &notes)
 }
 
+#[tauri::command]
+fn pin_note(app: tauri::AppHandle, id: String, pinned: bool) -> Result<(), String> {
+    let mut notes = load_notes(&app);
+    if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
+        note.pinned = pinned;
+    }
+    save_notes(&app, &notes)
+}
+
+#[tauri::command]
+fn set_follow_up(app: tauri::AppHandle, id: String, date: Option<String>) -> Result<(), String> {
+    let mut notes = load_notes(&app);
+    if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
+        note.follow_up_date = date;
+    }
+    save_notes(&app, &notes)
+}
+
+#[tauri::command]
+fn duplicate_note(app: tauri::AppHandle, id: String) -> Result<Note, String> {
+    let notes = load_notes(&app);
+    let original = notes.iter().find(|n| n.id == id)
+        .ok_or_else(|| format!("Note {} not found", id))?
+        .clone();
+
+    let millis = now_millis();
+    let dup = Note {
+        id: millis.to_string(),
+        text: original.text,
+        created_at: millis,
+        updated_at: millis,
+        follow_up_date: original.follow_up_date,
+        pinned: false,
+        status: "active".to_string(),
+    };
+
+    let mut notes = load_notes(&app);
+    notes.push(dup.clone());
+    save_notes(&app, &notes)?;
+    println!("[QuikCap] Note duplicated (original: {}, new: {})", id, dup.id);
+    Ok(dup)
+}
+
+#[tauri::command]
+fn delete_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let mut notes = load_notes(&app);
+    notes.retain(|n| n.id != id);
+    save_notes(&app, &notes)?;
+    println!("[QuikCap] Note permanently deleted (id: {})", id);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -250,7 +302,11 @@ pub fn run() {
             create_note,
             archive_note,
             update_note,
-            hide_capture
+            hide_capture,
+            pin_note,
+            set_follow_up,
+            duplicate_note,
+            delete_note
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
