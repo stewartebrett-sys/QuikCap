@@ -538,10 +538,14 @@ function Database() {
           {/* Notes list */}
           <div className="db-list">
 
-            <div className="db-list-actions">
-              <button className="db-new-btn" onClick={createNewNote} title="New note (Ctrl+N)">
-                <Plus size={13} strokeWidth={2.5} />
-                New Note
+            <div className="db-list-header">
+              <span className="db-list-label">Notes</span>
+              <button
+                className="db-list-add-btn"
+                onClick={createNewNote}
+                title="New note (Ctrl+N)"
+              >
+                <Plus size={14} strokeWidth={2} />
               </button>
             </div>
 
