@@ -215,6 +215,27 @@
   background: rgba(0, 0, 0, 0.1);
 }
 
+.db-list-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--cap-text-sub);
+  cursor: pointer;
+  transition: background 60ms, color 60ms;
+  flex-shrink: 0;
+}
+
+.db-list-back-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--cap-text);
+}
+
 /* ── Note rows ── */
 
 .db-cards {

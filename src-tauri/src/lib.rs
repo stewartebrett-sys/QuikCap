@@ -51,7 +51,11 @@ fn save_notes(app: &tauri::AppHandle, notes: &[Note]) -> Result<(), String> {
     let dir = data_dir(app);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string(notes).map_err(|e| e.to_string())?;
-    fs::write(dir.join("notes.json"), json).map_err(|e| e.to_string())?;
+    // Atomic write: write to temp file then rename so a crash mid-write
+    // never produces a corrupt notes.json.
+    let tmp = dir.join("notes.json.tmp");
+    fs::write(&tmp, &json).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, dir.join("notes.json")).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -217,6 +221,39 @@ fn delete_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn restore_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let mut notes = load_notes(&app);
+    if let Some(note) = notes.iter_mut().find(|n| n.id == id) {
+        note.status = "active".to_string();
+        note.updated_at = now_millis();
+        println!("[QuikCap] Note restored (id: {})", id);
+    }
+    save_notes(&app, &notes)
+}
+
+#[tauri::command]
+fn list_archived_notes(app: tauri::AppHandle) -> Vec<Note> {
+    let mut notes = load_notes(&app);
+    notes.retain(|n| n.status == "archived");
+    notes.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    notes
+}
+
+#[tauri::command]
+fn save_session(app: tauri::AppHandle, note_id: Option<String>) -> Result<(), String> {
+    let dir = data_dir(&app);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let content = note_id.unwrap_or_default();
+    fs::write(dir.join("session.txt"), content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_session(app: tauri::AppHandle) -> Option<String> {
+    let content = fs::read_to_string(data_dir(&app).join("session.txt")).ok()?;
+    if content.is_empty() { None } else { Some(content) }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -306,7 +343,11 @@ pub fn run() {
             pin_note,
             set_follow_up,
             duplicate_note,
-            delete_note
+            delete_note,
+            restore_note,
+            list_archived_notes,
+            save_session,
+            load_session
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

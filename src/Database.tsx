@@ -2,7 +2,7 @@ import "./Database.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Pin, Calendar, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Pin, Calendar, Plus, ChevronLeft, ChevronRight, ArchiveRestore } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 import RichEditor, { RichEditorHandle } from "./components/RichEditor";
 import { EditorToolbar } from "./components/EditorToolbar";
@@ -19,6 +19,13 @@ interface Note {
   follow_up_date?: string;
   status: string;
 }
+
+// Reversible note-level operations for the undo stack
+type NoteOp =
+  | { type: "archive";    note: Note }
+  | { type: "pin";        id: string; was: boolean }
+  | { type: "follow_up";  id: string; was: string | undefined }
+  | { type: "duplicate";  dupId: string };
 
 interface CtxMenu {
   note: Note;
@@ -41,9 +48,11 @@ const MONTH_NAMES = [
 ];
 
 const CTX_MENU_W = 180;
-const CTX_MENU_H = 248;
+const CTX_MENU_H = 250;
 const CAL_W = 220;
 const CAL_H = 250;
+// Sentinel stored in session.txt when the draft is selected
+const SESSION_DRAFT = "__draft__";
 
 // ─── Utilities ───────────────────────────────────────────
 
@@ -89,15 +98,12 @@ function sortNotes(notes: Note[]): Note[] {
 function smartDate(ms: number): string {
   const date = new Date(ms);
   const now = new Date();
-
   if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }
-
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-
   const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
   if (diffDays < 7) return date.toLocaleDateString([], { weekday: "long" });
   if (date.getFullYear() === now.getFullYear()) {
@@ -114,53 +120,78 @@ function clampMenu(x: number, y: number, w: number, h: number) {
 }
 
 const AUTOSAVE_MS = 500;
+const MAX_UNDO = 50;
 
 // ─── Component ───────────────────────────────────────────
 
 function Database() {
   const appWindow = getCurrentWindow();
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [draft, setDraft] = useState("");
+
+  const [notes, setNotes]           = useState<Note[]>([]);
+  const [draft, setDraft]           = useState("");
   // undefined = nothing selected; null = draft; string = saved note id
   const [selectedId, setSelectedId] = useState<string | null | undefined>(undefined);
-  const [search, setSearch] = useState("");
-  const [dbEditor, setDbEditor] = useState<Editor | null>(null);
-  const [dbZoom, setDbZoom] = useState(100);
-  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  const [search, setSearch]         = useState("");
+  const [dbEditor, setDbEditor]     = useState<Editor | null>(null);
+  const [dbZoom, setDbZoom]         = useState(100);
+  const [ctxMenu, setCtxMenu]       = useState<CtxMenu | null>(null);
   const [followUpPicker, setFollowUpPicker] = useState<FollowUpPicker | null>(null);
 
-  const saveTimer    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const editorRef    = useRef<RichEditorHandle>(null);
-  const editorHtmlRef = useRef<string>("");
-  const searchRef    = useRef<HTMLInputElement>(null);
-  const listRef      = useRef<HTMLDivElement>(null);
-  const cardRefs     = useRef<Map<string | null, HTMLButtonElement>>(new Map());
+  // ── Sprint 9 state ────────────────────────────────────
+  const [viewMode, setViewMode]         = useState<"notes" | "archived">("notes");
+  const [archivedNotes, setArchivedNotes] = useState<Note[]>([]);
+  const [undoStack, setUndoStack]       = useState<NoteOp[]>([]);
 
-  const createNoteRef = useRef<() => void>(() => {});
-  const deleteNoteRef = useRef<() => void>(() => {});
+  const saveTimer      = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const editorRef      = useRef<RichEditorHandle>(null);
+  const editorHtmlRef  = useRef<string>("");
+  const searchRef      = useRef<HTMLInputElement>(null);
+  const listRef        = useRef<HTMLDivElement>(null);
+  const cardRefs       = useRef<Map<string | null, HTMLButtonElement>>(new Map());
+  const createNoteRef  = useRef<() => void>(() => {});
+  const deleteNoteRef  = useRef<() => void>(() => {});
+  const undoRef        = useRef<() => void>(() => {});
 
-  // ── Initial load ──────────────────────────────────────
+  // ── Initial load + session restore ───────────────────
 
   useEffect(() => {
-    Promise.all([invoke<Note[]>("list_notes"), invoke<string>("load_draft")]).then(
-      ([fetchedNotes, fetchedDraft]) => {
-        const sorted = sortNotes(fetchedNotes);
-        setNotes(sorted);
-        setDraft(fetchedDraft);
+    Promise.all([
+      invoke<Note[]>("list_notes"),
+      invoke<string>("load_draft"),
+      invoke<string | null>("load_session"),
+    ]).then(([fetchedNotes, fetchedDraft, sessionId]) => {
+      const sorted = sortNotes(fetchedNotes);
+      setNotes(sorted);
+      setDraft(fetchedDraft);
 
-        if (fetchedDraft.trim()) {
-          setSelectedId(null);
-          editorHtmlRef.current = fetchedDraft;
-          editorRef.current?.setContent(fetchedDraft);
-        } else if (sorted.length > 0) {
-          setSelectedId(sorted[0].id);
-          editorHtmlRef.current = sorted[0].text;
-          editorRef.current?.setContent(sorted[0].text);
-        } else {
-          setSelectedId(undefined);
+      // Session restore: try to reopen the last-used note
+      if (sessionId === SESSION_DRAFT && fetchedDraft.trim()) {
+        setSelectedId(null);
+        editorHtmlRef.current = fetchedDraft;
+        editorRef.current?.setContent(fetchedDraft);
+      } else if (sessionId && sessionId !== SESSION_DRAFT) {
+        const restored = sorted.find((n) => n.id === sessionId);
+        if (restored) {
+          setSelectedId(restored.id);
+          editorHtmlRef.current = restored.text;
+          editorRef.current?.setContent(restored.text);
+          return;
         }
       }
-    );
+
+      // Fall back to default behaviour
+      if (fetchedDraft.trim() && !sessionId) {
+        setSelectedId(null);
+        editorHtmlRef.current = fetchedDraft;
+        editorRef.current?.setContent(fetchedDraft);
+      } else if (sorted.length > 0 && !sessionId) {
+        setSelectedId(sorted[0].id);
+        editorHtmlRef.current = sorted[0].text;
+        editorRef.current?.setContent(sorted[0].text);
+      } else if (!sessionId) {
+        setSelectedId(undefined);
+      }
+    });
   }, []);
 
   // ── Refresh on window focus ───────────────────────────
@@ -179,9 +210,18 @@ function Database() {
   }, []);
 
   // ── Global keyboard shortcuts ─────────────────────────
+  // Ctrl+Z outside the editor fires the app-level undo stack.
+  // Inside the editor Tiptap handles Ctrl+Z natively.
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const inEditor = document.activeElement?.getAttribute("contenteditable") === "true";
+
+      if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey && !inEditor) {
+        e.preventDefault();
+        undoRef.current();
+        return;
+      }
       if (e.key === "n" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         createNoteRef.current();
@@ -221,7 +261,12 @@ function Database() {
     el?.scrollIntoView({ block: "nearest", behavior: "auto" });
   }, [selectedId]);
 
-  // ── Save / select helpers ─────────────────────────────
+  // ── Save / session helpers ────────────────────────────
+
+  const persistSession = (id: string | null | undefined) => {
+    const sessionId = id === null ? SESSION_DRAFT : (id ?? "");
+    invoke("save_session", { noteId: sessionId || null }).catch(console.error);
+  };
 
   const flushSave = () => {
     clearTimeout(saveTimer.current);
@@ -243,6 +288,7 @@ function Database() {
     editorHtmlRef.current = content;
     editorRef.current?.setContent(content);
     editorRef.current?.focus();
+    persistSession(id);
   };
 
   const selectNoteKeyboard = (id: string | null) => {
@@ -251,7 +297,49 @@ function Database() {
     const content = id === null ? draft : (notes.find((n) => n.id === id)?.text ?? "");
     editorHtmlRef.current = content;
     editorRef.current?.setContent(content);
+    persistSession(id);
   };
+
+  // ── Undo stack ────────────────────────────────────────
+
+  const pushUndo = (op: NoteOp) =>
+    setUndoStack((prev) => [...prev.slice(-MAX_UNDO + 1), op]);
+
+  const handleUndo = async () => {
+    if (undoStack.length === 0) return;
+    const op = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+
+    try {
+      switch (op.type) {
+        case "archive": {
+          await invoke("restore_note", { id: op.note.id });
+          setNotes((prev) => sortNotes([{ ...op.note, status: "active" }, ...prev]));
+          selectNote(op.note.id);
+          break;
+        }
+        case "pin": {
+          await invoke("pin_note", { id: op.id, pinned: op.was });
+          setNotes((prev) => sortNotes(prev.map((n) => n.id === op.id ? { ...n, pinned: op.was } : n)));
+          break;
+        }
+        case "follow_up": {
+          await invoke("set_follow_up", { id: op.id, date: op.was ?? null });
+          setNotes((prev) => sortNotes(prev.map((n) =>
+            n.id === op.id ? { ...n, follow_up_date: op.was } : n
+          )));
+          break;
+        }
+        case "duplicate": {
+          await invoke("delete_note", { id: op.dupId });
+          setNotes((prev) => sortNotes(prev.filter((n) => n.id !== op.dupId)));
+          break;
+        }
+      }
+    } catch (e) { console.error("Undo failed:", e); }
+  };
+
+  undoRef.current = handleUndo;
 
   // ── New note ──────────────────────────────────────────
 
@@ -269,20 +357,20 @@ function Database() {
       editorHtmlRef.current = "";
       editorRef.current?.setContent("");
       editorRef.current?.focus();
+      persistSession(newNote.id);
     } catch (e) { console.error("Failed to create note:", e); }
   };
 
   createNoteRef.current = createNewNote;
 
-  // ── Remove note from list (shared by archive + delete) ──
+  // ── Remove from list (shared by archive + delete) ─────
 
   const handleNoteRemoved = (id: string, remaining: Note[]) => {
     if (selectedId !== id) return;
     if (remaining.length > 0) {
-      const next = remaining[0];
-      setSelectedId(next.id);
-      editorHtmlRef.current = next.text;
-      editorRef.current?.setContent(next.text);
+      setSelectedId(remaining[0].id);
+      editorHtmlRef.current = remaining[0].text;
+      editorRef.current?.setContent(remaining[0].text);
     } else {
       setSelectedId(undefined);
       editorHtmlRef.current = "";
@@ -290,23 +378,24 @@ function Database() {
     }
   };
 
-  // ── Delete (archive) note — keyboard shortcut ─────────
+  // ── Delete (archive) — keyboard shortcut ──────────────
 
   const deleteSelectedNote = async () => {
     if (typeof selectedId !== "string") return;
+    const noteToArchive = notes.find((n) => n.id === selectedId);
     clearTimeout(saveTimer.current);
-    try {
-      await invoke("archive_note", { id: selectedId });
-    } catch (e) { console.error("Failed to archive note:", e); return; }
+    try { await invoke("archive_note", { id: selectedId }); }
+    catch (e) { console.error(e); return; }
+
+    if (noteToArchive) pushUndo({ type: "archive", note: noteToArchive });
 
     const remaining = sortNotes(notes.filter((n) => n.id !== selectedId));
     setNotes(remaining);
 
     if (remaining.length > 0) {
-      const next = remaining[0];
-      setSelectedId(next.id);
-      editorHtmlRef.current = next.text;
-      editorRef.current?.setContent(next.text);
+      setSelectedId(remaining[0].id);
+      editorHtmlRef.current = remaining[0].text;
+      editorRef.current?.setContent(remaining[0].text);
       listRef.current?.focus();
     } else if (draft.trim()) {
       setSelectedId(null);
@@ -322,7 +411,7 @@ function Database() {
         setNotes([newNote]);
         setSelectedId(newNote.id);
         listRef.current?.focus();
-      } catch (e) { console.error("Failed to create replacement note:", e); }
+      } catch (e) { console.error(e); }
     }
   };
 
@@ -351,11 +440,44 @@ function Database() {
     editorRef.current?.setZoom(z);
   };
 
+  // ── Archive view ──────────────────────────────────────
+
+  const switchToArchived = async () => {
+    const archived = await invoke<Note[]>("list_archived_notes").catch(() => []);
+    setArchivedNotes(archived);
+    setViewMode("archived");
+  };
+
+  const switchToNotes = () => setViewMode("notes");
+
+  const handleRestoreNote = async (id: string) => {
+    setCtxMenu(null);
+    try {
+      await invoke("restore_note", { id });
+      const restored = archivedNotes.find((n) => n.id === id);
+      setArchivedNotes((prev) => prev.filter((n) => n.id !== id));
+      if (restored) {
+        const active = { ...restored, status: "active" };
+        setNotes((prev) => sortNotes([active, ...prev]));
+        switchToNotes();
+        selectNote(id);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handlePermanentDeleteArchived = async (id: string) => {
+    setCtxMenu(null);
+    try {
+      await invoke("delete_note", { id });
+      setArchivedNotes((prev) => prev.filter((n) => n.id !== id));
+    } catch (e) { console.error(e); }
+  };
+
   // ── Context menu handlers ─────────────────────────────
 
   const handleContextMenu = (e: React.MouseEvent, note: Note) => {
     e.preventDefault();
-    selectNoteKeyboard(note.id);
+    if (note.status !== "archived") selectNoteKeyboard(note.id);
     const pos = clampMenu(e.clientX, e.clientY, CTX_MENU_W, CTX_MENU_H);
     setCtxMenu({ note, x: pos.x, y: pos.y });
   };
@@ -374,6 +496,7 @@ function Database() {
     try {
       await invoke("pin_note", { id: note.id, pinned: newPinned });
       setNotes((prev) => sortNotes(prev.map((n) => n.id === note.id ? { ...n, pinned: newPinned } : n)));
+      pushUndo({ type: "pin", id: note.id, was: note.pinned });
     } catch (e) { console.error(e); }
   };
 
@@ -386,6 +509,7 @@ function Database() {
 
   const handleFollowUpSelect = async (date: Date | null) => {
     if (!followUpPicker) return;
+    const prevDate = followUpPicker.currentDate;
     const dateStr = date ? toISODate(date) : null;
     setFollowUpPicker(null);
     try {
@@ -393,6 +517,7 @@ function Database() {
       setNotes((prev) => sortNotes(prev.map((n) =>
         n.id === followUpPicker.noteId ? { ...n, follow_up_date: dateStr ?? undefined } : n
       )));
+      pushUndo({ type: "follow_up", id: followUpPicker.noteId, was: prevDate });
     } catch (e) { console.error(e); }
   };
 
@@ -403,20 +528,22 @@ function Database() {
     try {
       const dup = await invoke<Note>("duplicate_note", { id });
       setNotes((prev) => sortNotes([dup, ...prev]));
+      pushUndo({ type: "duplicate", dupId: dup.id });
+      selectNote(dup.id);
     } catch (e) { console.error("Failed to duplicate note:", e); }
   };
 
   const ctxArchive = async () => {
     if (!ctxMenu) return;
-    const id = ctxMenu.note.id;
+    const { note } = ctxMenu;
     setCtxMenu(null);
     clearTimeout(saveTimer.current);
-    try {
-      await invoke("archive_note", { id });
-    } catch (e) { console.error(e); return; }
-    const remaining = sortNotes(notes.filter((n) => n.id !== id));
+    try { await invoke("archive_note", { id: note.id }); }
+    catch (e) { console.error(e); return; }
+    pushUndo({ type: "archive", note });
+    const remaining = sortNotes(notes.filter((n) => n.id !== note.id));
     setNotes(remaining);
-    handleNoteRemoved(id, remaining);
+    handleNoteRemoved(note.id, remaining);
   };
 
   const ctxDelete = async () => {
@@ -424,17 +551,14 @@ function Database() {
     const id = ctxMenu.note.id;
     setCtxMenu(null);
     clearTimeout(saveTimer.current);
-    try {
-      await invoke("delete_note", { id });
-    } catch (e) { console.error(e); return; }
+    try { await invoke("delete_note", { id }); }
+    catch (e) { console.error(e); return; }
     const remaining = sortNotes(notes.filter((n) => n.id !== id));
     setNotes(remaining);
     handleNoteRemoved(id, remaining);
   };
 
   // ── Search — memoized index + ranked results ──────────
-  // noteIndex re-computes only when notes state changes.
-  // filteredNotes re-computes when notes or query changes.
 
   const query = search.trim();
 
@@ -465,6 +589,7 @@ function Database() {
   // ── List keyboard handler ─────────────────────────────
 
   const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (viewMode === "archived") return; // no keyboard nav in archive view
     const visibleIds: (string | null)[] = [
       ...(showDraft ? [null as null] : []),
       ...filteredNotes.map((n) => n.id),
@@ -505,15 +630,14 @@ function Database() {
   const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
-    if (search) {
-      setSearch("");
-    } else {
-      (e.target as HTMLInputElement).blur();
-      editorRef.current?.focus();
-    }
+    if (search) { setSearch(""); }
+    else { (e.target as HTMLInputElement).blur(); editorRef.current?.focus(); }
   };
 
   // ── Render ────────────────────────────────────────────
+
+  const isArchiveView = viewMode === "archived";
+  const displayNotes = isArchiveView ? archivedNotes : filteredNotes;
 
   return (
     <div className="db">
@@ -526,12 +650,10 @@ function Database() {
           </svg>
           <span className="db-logo-text">QuikCap</span>
         </div>
-
         <div className="db-tabs" data-tauri-no-drag>
           <button className="db-tab db-tab--active">Saved Notes</button>
           <button className="db-tab db-tab--inactive">Settings</button>
         </div>
-
         <div className="cap-winctrl-group" data-tauri-no-drag style={{ marginLeft: "auto" }}>
           <button className="cap-winctrl cap-winctrl--min" onClick={() => appWindow.minimize()} title="Minimize">
             <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" rx="0.5" fill="currentColor" /></svg>
@@ -547,8 +669,7 @@ function Database() {
 
       {/* ── Workspace ── */}
       <div className="db-workspace">
-
-        {dbEditor && !editorDisabled && (
+        {dbEditor && !editorDisabled && !isArchiveView && (
           <div className="db-toolbar-surface">
             <EditorToolbar editor={dbEditor} zoom={dbZoom} onZoomChange={handleZoomChange} />
           </div>
@@ -556,28 +677,50 @@ function Database() {
 
         <div className="db-main-surface">
 
-          {/* Notes list */}
+          {/* ── Notes list pane ── */}
           <div className="db-list">
 
+            {/* List header — changes between Notes and Archived views */}
             <div className="db-list-header">
-              <span className="db-list-label">Notes</span>
-              <button
-                className="db-list-add-btn"
-                onClick={createNewNote}
-                title="New note (Ctrl+N)"
-              >
-                <Plus size={14} strokeWidth={2} />
-              </button>
+              {isArchiveView ? (
+                <>
+                  <button className="db-list-back-btn" onClick={switchToNotes} title="Back to Notes">
+                    <ChevronLeft size={13} strokeWidth={2.5} />
+                  </button>
+                  <span className="db-list-label">Archived</span>
+                </>
+              ) : (
+                <>
+                  <span className="db-list-label">Notes</span>
+                  <div style={{ display: "flex", gap: 2 }}>
+                    <button
+                      className="db-list-add-btn"
+                      onClick={switchToArchived}
+                      title="View archived notes"
+                    >
+                      <ArchiveRestore size={13} strokeWidth={2} />
+                    </button>
+                    <button
+                      className="db-list-add-btn"
+                      onClick={createNewNote}
+                      title="New note (Ctrl+N)"
+                    >
+                      <Plus size={14} strokeWidth={2} />
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
+            {/* Scrollable card list */}
             <div
               className="db-cards"
               tabIndex={0}
               ref={listRef}
               onKeyDown={onListKeyDown}
             >
-              {/* Draft */}
-              {showDraft && (
+              {/* Draft (notes view only) */}
+              {!isArchiveView && showDraft && (
                 <button
                   ref={(el) => { if (el) cardRefs.current.set(null, el); else cardRefs.current.delete(null); }}
                   className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
@@ -591,16 +734,25 @@ function Database() {
                 </button>
               )}
 
-              {/* Saved notes */}
-              {filteredNotes.map((note) => (
+              {/* Note rows (shared between notes and archive views) */}
+              {displayNotes.map((note) => (
                 <button
                   key={note.id}
-                  ref={(el) => { if (el) cardRefs.current.set(note.id, el); else cardRefs.current.delete(note.id); }}
-                  className={`db-card${selectedId === note.id ? " db-card-selected" : ""}`}
-                  onClick={() => selectNote(note.id)}
+                  ref={(el) => {
+                    if (!isArchiveView) {
+                      if (el) cardRefs.current.set(note.id, el);
+                      else cardRefs.current.delete(note.id);
+                    }
+                  }}
+                  className={`db-card${!isArchiveView && selectedId === note.id ? " db-card-selected" : ""}`}
+                  onClick={() => { if (!isArchiveView) selectNote(note.id); }}
                   onContextMenu={(e) => handleContextMenu(e, note)}
                 >
-                  <span className="db-card-title"><HighlightedText text={firstLine(note.text)} query={query} /></span>
+                  <span className="db-card-title">
+                    {isArchiveView
+                      ? firstLine(note.text)
+                      : <HighlightedText text={firstLine(note.text)} query={query} />}
+                  </span>
                   <div className="db-card-meta">
                     {note.pinned && <Pin size={9} strokeWidth={2.5} className="db-icon-pin" />}
                     {note.follow_up_date && <Calendar size={9} strokeWidth={2.5} className="db-icon-cal" />}
@@ -609,7 +761,8 @@ function Database() {
                 </button>
               ))}
 
-              {!showDraft && filteredNotes.length === 0 && (
+              {/* Empty states */}
+              {!isArchiveView && !showDraft && filteredNotes.length === 0 && (
                 <div className="db-empty">
                   {query ? (
                     <>
@@ -619,10 +772,16 @@ function Database() {
                   ) : "No saved notes yet."}
                 </div>
               )}
+              {isArchiveView && archivedNotes.length === 0 && (
+                <div className="db-empty">
+                  <div className="db-empty-title">Archive is empty</div>
+                  <div className="db-empty-hint">Archived notes appear here.</div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Editor panel */}
+          {/* ── Editor panel ── */}
           <div className="db-editor-panel">
             <div className="db-editor-header">
               <input
@@ -635,7 +794,6 @@ function Database() {
                 onKeyDown={onSearchKeyDown}
               />
             </div>
-
             <RichEditor
               ref={editorRef}
               onChange={handleEditorChange}
@@ -655,22 +813,35 @@ function Database() {
       {ctxMenu && (
         <>
           <div className="db-overlay" onClick={() => setCtxMenu(null)} />
-          <div
-            className="db-ctx-menu"
-            style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          >
-            <button className="db-ctx-item" onClick={ctxOpen}>Open</button>
-            <div className="db-ctx-sep" />
-            <button className="db-ctx-item" onClick={ctxPin}>
-              {ctxMenu.note.pinned ? "Unpin" : "Pin"}
-            </button>
-            <button className="db-ctx-item" onClick={ctxFollowUp}>
-              {ctxMenu.note.follow_up_date ? "Edit Follow Up" : "Add Follow Up"}
-            </button>
-            <button className="db-ctx-item" onClick={ctxDuplicate}>Duplicate</button>
-            <div className="db-ctx-sep" />
-            <button className="db-ctx-item" onClick={ctxArchive}>Archive</button>
-            <button className="db-ctx-item db-ctx-item--danger" onClick={ctxDelete}>Delete</button>
+          <div className="db-ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+            {ctxMenu.note.status === "archived" ? (
+              /* Archive-view menu */
+              <>
+                <button className="db-ctx-item" onClick={() => handleRestoreNote(ctxMenu.note.id)}>
+                  Restore
+                </button>
+                <div className="db-ctx-sep" />
+                <button className="db-ctx-item db-ctx-item--danger" onClick={() => handlePermanentDeleteArchived(ctxMenu.note.id)}>
+                  Delete Permanently
+                </button>
+              </>
+            ) : (
+              /* Normal menu */
+              <>
+                <button className="db-ctx-item" onClick={ctxOpen}>Open</button>
+                <div className="db-ctx-sep" />
+                <button className="db-ctx-item" onClick={ctxPin}>
+                  {ctxMenu.note.pinned ? "Unpin" : "Pin"}
+                </button>
+                <button className="db-ctx-item" onClick={ctxFollowUp}>
+                  {ctxMenu.note.follow_up_date ? "Edit Follow Up" : "Add Follow Up"}
+                </button>
+                <button className="db-ctx-item" onClick={ctxDuplicate}>Duplicate</button>
+                <div className="db-ctx-sep" />
+                <button className="db-ctx-item" onClick={ctxArchive}>Archive</button>
+                <button className="db-ctx-item db-ctx-item--danger" onClick={ctxDelete}>Delete</button>
+              </>
+            )}
           </div>
         </>
       )}
@@ -759,21 +930,14 @@ function DbCalendarPicker({ x, y, currentDate, onSelect, onClose }: DbCalendarPr
   return (
     <div className="db-cal-pop" style={{ left: x, top: y }}>
       <div className="db-cal-header">
-        <button
-          className="db-cal-nav"
-          onMouseDown={(e) => { e.preventDefault(); prevMonth(); }}
-        >
+        <button className="db-cal-nav" onMouseDown={(e) => { e.preventDefault(); prevMonth(); }}>
           <ChevronLeft size={13} strokeWidth={2} />
         </button>
         <span className="db-cal-title">{MONTH_NAMES[viewMonth]} {viewYear}</span>
-        <button
-          className="db-cal-nav"
-          onMouseDown={(e) => { e.preventDefault(); nextMonth(); }}
-        >
+        <button className="db-cal-nav" onMouseDown={(e) => { e.preventDefault(); nextMonth(); }}>
           <ChevronRight size={13} strokeWidth={2} />
         </button>
       </div>
-
       <div className="db-cal-grid">
         {DAY_LABELS.map((d) => <div key={d} className="db-cal-dow">{d}</div>)}
         {cells.map((d, i) =>
@@ -782,29 +946,17 @@ function DbCalendarPicker({ x, y, currentDate, onSelect, onClose }: DbCalendarPr
           ) : (
             <button
               key={`d-${i}`}
-              className={[
-                "db-cal-day",
-                isToday(d) ? "db-cal-day--today" : "",
-                isSelected(d) ? "db-cal-day--selected" : "",
-              ].filter(Boolean).join(" ")}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onSelect(new Date(viewYear, viewMonth, d));
-                onClose();
-              }}
+              className={["db-cal-day", isToday(d) ? "db-cal-day--today" : "", isSelected(d) ? "db-cal-day--selected" : ""].filter(Boolean).join(" ")}
+              onMouseDown={(e) => { e.preventDefault(); onSelect(new Date(viewYear, viewMonth, d)); onClose(); }}
             >
               {d}
             </button>
           )
         )}
       </div>
-
       {selected && (
         <div className="db-cal-footer">
-          <button
-            className="db-cal-clear"
-            onMouseDown={(e) => { e.preventDefault(); onSelect(null); onClose(); }}
-          >
+          <button className="db-cal-clear" onMouseDown={(e) => { e.preventDefault(); onSelect(null); onClose(); }}>
             Clear date
           </button>
         </div>
