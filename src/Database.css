@@ -103,7 +103,6 @@
   right: 8px;
   height: 2px;
   background: var(--cap-purple);
-  border-radius: 2px 2px 0 0;
 }
 
 .db-tab--inactive {
@@ -131,17 +130,13 @@
 .db-toolbar-surface {
   background: var(--cap-bg);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
   flex-shrink: 0;
-  /* overflow: visible — lets split-button dropdowns escape the surface */
   overflow: visible;
 }
 
-/* Strip bottom border; add border-radius so corners stay rounded without overflow:hidden */
 .db-toolbar-surface .editor-toolbar {
   background: var(--cap-bg);
   border-bottom: none;
-  border-radius: 8px;
 }
 
 /* ── Main surface: notes list + editor ── */
@@ -153,7 +148,6 @@
   flex-direction: row;
   background: var(--cap-bg);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -203,6 +197,10 @@
   user-select: none;
 }
 
+.db-view-trigger {
+  border-radius: 0;
+}
+
 .db-view-trigger:hover {
   background: rgba(0, 0, 0, 0.05);
   color: var(--cap-text-sub);
@@ -220,7 +218,7 @@
   z-index: 9000;
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
+  border-radius: 2px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.05);
   padding: 4px;
   min-width: 160px;
@@ -234,7 +232,7 @@
   padding: 6px 10px;
   background: none;
   border: none;
-  border-radius: 5px;
+  border-radius: 0;
   text-align: left;
   font-family: var(--cap-font);
   font-size: 12.5px;
@@ -270,7 +268,7 @@
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 5px;
+  border-radius: 0;
   color: var(--cap-text-sub);
   cursor: pointer;
   transition: background 60ms, color 60ms;
@@ -294,7 +292,7 @@
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 0;
   color: var(--cap-text-sub);
   cursor: pointer;
   transition: background 60ms, color 60ms;
@@ -456,7 +454,7 @@
   width: 172px;
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
+  border-radius: 2px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.13), 0 1px 4px rgba(0, 0, 0, 0.06);
   padding: 4px;
   user-select: none;
@@ -468,7 +466,7 @@
   padding: 6px 10px;
   background: none;
   border: none;
-  border-radius: 5px;
+  border-radius: 0;
   text-align: left;
   font-family: var(--cap-font);
   font-size: 12.5px;
@@ -507,7 +505,7 @@
   width: 216px;
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
+  border-radius: 2px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.13), 0 1px 4px rgba(0, 0, 0, 0.06);
   padding: 10px;
   user-select: none;
@@ -534,7 +532,7 @@
   height: 24px;
   background: none;
   border: none;
-  border-radius: 5px;
+  border-radius: 0;
   cursor: pointer;
   color: var(--cap-text-sub);
   transition: background 60ms;
@@ -566,7 +564,7 @@
   height: 26px;
   background: none;
   border: none;
-  border-radius: 5px;
+  border-radius: 2px;
   font-family: var(--cap-font);
   font-size: 11.5px;
   color: var(--cap-text);
