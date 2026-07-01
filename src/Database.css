@@ -216,6 +216,12 @@
   gap: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  /* Focus ring: suppress browser default, use inset left border instead */
+  outline: none;
+}
+
+.db-cards:focus-visible {
+  box-shadow: inset 2px 0 0 0 rgba(124, 58, 237, 0.3);
 }
 
 .db-cards::-webkit-scrollbar { width: 4px; }
@@ -358,3 +364,4 @@
   box-shadow: 0 0 0 2.5px rgba(124, 58, 237, 0.09);
   background: var(--cap-bg);
 }
+

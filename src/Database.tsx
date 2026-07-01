@@ -56,14 +56,6 @@ function sortNotes(notes: Note[]): Note[] {
   });
 }
 
-function isInteractiveElement(): boolean {
-  const el = document.activeElement;
-  if (!el) return false;
-  if ((el as HTMLElement).getAttribute?.("contenteditable") === "true") return true;
-  const tag = el.tagName;
-  return tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
-}
-
 function smartDate(ms: number): string {
   const date = new Date(ms);
   const now = new Date();
@@ -98,9 +90,13 @@ function Database() {
   const [dbEditor, setDbEditor] = useState<Editor | null>(null);
   const [dbZoom, setDbZoom] = useState(100);
 
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const editorRef = useRef<RichEditorHandle>(null);
+  const saveTimer    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const editorRef    = useRef<RichEditorHandle>(null);
   const editorHtmlRef = useRef<string>("");
+  const searchRef    = useRef<HTMLInputElement>(null);
+  const listRef      = useRef<HTMLDivElement>(null);
+  // Per-card DOM refs for scrollIntoView
+  const cardRefs     = useRef<Map<string | null, HTMLButtonElement>>(new Map());
 
   // Stable refs so keyboard handlers always call the current closure
   const createNoteRef = useRef<() => void>(() => {});
@@ -145,8 +141,8 @@ function Database() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  // ── Keyboard shortcuts ────────────────────────────────
-  // Ctrl+N = new note; Delete/Backspace (when not in editor) = archive note
+  // ── Global keyboard shortcuts ─────────────────────────
+  // Ctrl+N = new note (from anywhere); Ctrl+F = focus search (from anywhere)
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -155,14 +151,24 @@ function Database() {
         createNoteRef.current();
         return;
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && !isInteractiveElement()) {
+      if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        deleteNoteRef.current();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+        return;
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // ── Scroll selected card into view ────────────────────
+
+  useEffect(() => {
+    if (selectedId === undefined) return;
+    const el = cardRefs.current.get(selectedId as string | null);
+    el?.scrollIntoView({ block: "nearest", behavior: "auto" });
+  }, [selectedId]);
 
   // ── Save / select helpers ─────────────────────────────
 
@@ -179,6 +185,7 @@ function Database() {
     }
   };
 
+  // Mouse click: switch note and focus editor
   const selectNote = (id: string | null) => {
     flushSave();
     setSelectedId(id);
@@ -188,16 +195,23 @@ function Database() {
     editorRef.current?.focus();
   };
 
+  // Arrow-key navigation: switch note but keep focus on the list
+  const selectNoteKeyboard = (id: string | null) => {
+    flushSave();
+    setSelectedId(id);
+    const content = id === null ? draft : (notes.find((n) => n.id === id)?.text ?? "");
+    editorHtmlRef.current = content;
+    editorRef.current?.setContent(content);
+  };
+
   // ── New note ──────────────────────────────────────────
 
   const createNewNote = async () => {
-    // If a blank note already exists, just select it
     const existing = notes.find((n) => !htmlToPlain(n.text).trim());
     if (existing) {
       selectNote(existing.id);
       return;
     }
-    // Also bail if the currently-selected note is already blank
     if (typeof selectedId === "string") {
       const current = notes.find((n) => n.id === selectedId);
       if (current && !htmlToPlain(current.text).trim()) {
@@ -225,7 +239,7 @@ function Database() {
   const deleteSelectedNote = async () => {
     if (typeof selectedId !== "string") return;
 
-    clearTimeout(saveTimer.current); // don't autosave the note we're deleting
+    clearTimeout(saveTimer.current);
 
     try {
       await invoke("archive_note", { id: selectedId });
@@ -242,14 +256,13 @@ function Database() {
       setSelectedId(next.id);
       editorHtmlRef.current = next.text;
       editorRef.current?.setContent(next.text);
-      editorRef.current?.focus();
+      listRef.current?.focus();
     } else if (draft.trim()) {
       setSelectedId(null);
       editorHtmlRef.current = draft;
       editorRef.current?.setContent(draft);
-      editorRef.current?.focus();
+      listRef.current?.focus();
     } else {
-      // No notes and no draft — create a fresh blank note
       setSelectedId(undefined);
       editorHtmlRef.current = "";
       editorRef.current?.setContent("");
@@ -257,7 +270,7 @@ function Database() {
         const newNote = await invoke<Note>("create_note");
         setNotes([newNote]);
         setSelectedId(newNote.id);
-        editorRef.current?.focus();
+        listRef.current?.focus();
       } catch (e) {
         console.error("Failed to create replacement note:", e);
       }
@@ -297,12 +310,66 @@ function Database() {
   // ── Filtered + sorted note list ───────────────────────
 
   const query = search.toLowerCase();
-  const showDraft = draft.trim() && (!query || htmlToPlain(draft).toLowerCase().includes(query));
+  const showDraft = !!(draft.trim() && (!query || htmlToPlain(draft).toLowerCase().includes(query)));
   const filteredNotes = sortNotes(
     notes.filter((n) => !query || htmlToPlain(n.text).toLowerCase().includes(query))
   );
 
   const editorDisabled = selectedId === undefined;
+
+  // ── List keyboard handler ─────────────────────────────
+  // Arrow Up/Down navigate notes; Enter focuses editor; Delete/Backspace archives.
+  // Only active when .db-cards has focus.
+
+  const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const visibleIds: (string | null)[] = [
+      ...(showDraft ? [null as null] : []),
+      ...filteredNotes.map((n) => n.id),
+    ];
+    const currentIdx =
+      selectedId === undefined ? -1 : visibleIds.indexOf(selectedId as string | null);
+
+    switch (e.key) {
+      case "ArrowDown": {
+        e.preventDefault();
+        const nextIdx = Math.min(currentIdx + 1, visibleIds.length - 1);
+        if (nextIdx >= 0 && nextIdx !== currentIdx) selectNoteKeyboard(visibleIds[nextIdx]);
+        break;
+      }
+      case "ArrowUp": {
+        e.preventDefault();
+        const prevIdx = Math.max(currentIdx - 1, 0);
+        if (prevIdx >= 0 && prevIdx < visibleIds.length && prevIdx !== currentIdx)
+          selectNoteKeyboard(visibleIds[prevIdx]);
+        break;
+      }
+      case "Enter": {
+        e.preventDefault();
+        if (!editorDisabled) editorRef.current?.focus();
+        break;
+      }
+      case "Delete":
+      case "Backspace": {
+        e.preventDefault();
+        deleteNoteRef.current();
+        break;
+      }
+    }
+  };
+
+  // ── Search keyboard handler ───────────────────────────
+  // Esc with text clears search; Esc when empty refocuses editor.
+
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    if (search) {
+      setSearch("");
+    } else {
+      (e.target as HTMLInputElement).blur();
+      editorRef.current?.focus();
+    }
+  };
 
   // ── Render ────────────────────────────────────────────
 
@@ -362,11 +429,19 @@ function Database() {
               </button>
             </div>
 
-            <div className="db-cards">
-
+            <div
+              className="db-cards"
+              tabIndex={0}
+              ref={listRef}
+              onKeyDown={onListKeyDown}
+            >
               {/* Draft (always first) */}
               {showDraft && (
                 <button
+                  ref={(el) => {
+                    if (el) cardRefs.current.set(null, el);
+                    else cardRefs.current.delete(null);
+                  }}
                   className={`db-card db-card-draft${selectedId === null ? " db-card-selected" : ""}`}
                   onClick={() => selectNote(null)}
                 >
@@ -381,6 +456,10 @@ function Database() {
               {filteredNotes.map((note) => (
                 <button
                   key={note.id}
+                  ref={(el) => {
+                    if (el) cardRefs.current.set(note.id, el);
+                    else cardRefs.current.delete(note.id);
+                  }}
                   className={`db-card${selectedId === note.id ? " db-card-selected" : ""}`}
                   onClick={() => selectNote(note.id)}
                 >
@@ -406,11 +485,13 @@ function Database() {
 
             <div className="db-editor-header">
               <input
+                ref={searchRef}
                 className="db-search"
                 type="text"
                 placeholder="Search notes..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={onSearchKeyDown}
               />
             </div>
 
@@ -421,6 +502,7 @@ function Database() {
               hideToolbar={true}
               onEditorReady={(e) => setDbEditor(e)}
               onZoomChange={(z) => setDbZoom(z)}
+              onEscape={() => listRef.current?.focus()}
             />
           </div>
 
